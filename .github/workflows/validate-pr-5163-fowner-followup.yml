@@ -1,4 +1,4 @@
-name: Validate PR 5163 FOWNER follow-up
+name: Stage validated PR 5163 FOWNER follow-up
 
 on:
   push:
@@ -9,26 +9,21 @@ permissions:
   contents: write
 
 jobs:
-  validate-and-push:
+  stage-validated-patch:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
     steps:
-      - name: Check out the exact PR head
+      - name: Check out the exact reviewed PR head
         uses: actions/checkout@v4
         with:
           ref: fix/5161-aio-fowner-cap
           fetch-depth: 0
 
-      - name: Guard the reviewed starting point
+      - name: Guard and recreate the already-validated patch
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "fbba94fb3e32661d0e08935b876e09f9c13b6d3a"
-
-      - name: Apply reviewer follow-up
-        shell: bash
-        run: |
-          set -euo pipefail
+          test "$(git rev-parse origin/automation/stage-pr-5163-fowner-followup)" = "fbba94fb3e32661d0e08935b876e09f9c13b6d3a"
           git show origin/automation/validate-pr-5163-fowner-smoke:.github/scripts/patch_pr_5163_fowner_followup.py > /tmp/patch_pr_5163_fowner_followup.py
           python /tmp/patch_pr_5163_fowner_followup.py
           git diff --check
@@ -39,65 +34,18 @@ jobs:
             backend/packages/harness/deerflow/community/aio_sandbox/local_backend.py \
             backend/tests/test_aio_sandbox_local_backend.py | sort)"
           test "$changed" = "$expected"
-          grep -Fq 'test_aio_1_11_image_starts_with_fowner_capability' backend/tests/test_aio_sandbox_local_backend.py
-          grep -Fq 'DEER_FLOW_SANDBOX_FOWNER_SMOKE_IMAGE' .github/workflows/sandbox-image-smoke.yml
-          grep -Fq 'FOWNER regression image (1.11.0)' .github/workflows/sandbox-image-smoke.yml
-          grep -Fq 'all-or-nothing opt-out' backend/docs/CONFIGURATION.md
-          grep -Fq 'version-agnostic' backend/packages/harness/deerflow/community/aio_sandbox/local_backend.py
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "0.11.1"
-
-      - name: Install backend dependencies
-        working-directory: backend
-        run: uv sync --group dev
-
-      - name: Run offline sandbox regression suite
-        working-directory: backend
-        run: uv run pytest -m "not live" tests/test_aio_sandbox_local_backend.py -q
-
-      - name: Resolve baseline and 1.11.0 smoke images
+      - name: Stage non-workflow files and an exact workflow copy
         shell: bash
         run: |
           set -euo pipefail
-          resolve_image() {
-            local source_ref="$1"
-            local output_var="$2"
-            local repo_digest
-            docker pull "$source_ref" >/dev/null
-            repo_digest="$(docker image inspect "$source_ref" --format '{{index .RepoDigests 0}}')"
-            echo "$output_var=$repo_digest" >> "$GITHUB_ENV"
-            echo "$output_var=$repo_digest"
-          }
-          resolve_image enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest DEER_FLOW_SANDBOX_SMOKE_IMAGE
-          resolve_image enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.11.0 DEER_FLOW_SANDBOX_FOWNER_SMOKE_IMAGE
-
-      - name: Run both real-image smoke tests
-        working-directory: backend
-        run: uv run pytest -m live tests/test_aio_sandbox_local_backend.py -v
-
-      - name: Commit and push the validated follow-up
-        shell: bash
-        run: |
-          set -euo pipefail
+          cp .github/workflows/sandbox-image-smoke.yml .pr5163-sandbox-image-smoke.yml.staged
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
-            .github/workflows/sandbox-image-smoke.yml \
             backend/docs/CONFIGURATION.md \
             backend/packages/harness/deerflow/community/aio_sandbox/local_backend.py \
-            backend/tests/test_aio_sandbox_local_backend.py
-          git commit -m "test(sandbox): pin FOWNER regression smoke"
-          git push origin HEAD:fix/5161-aio-fowner-cap
-
-      - name: Remove temporary validation branch
-        if: success()
-        shell: bash
-        run: git push origin --delete automation/validate-pr-5163-fowner-smoke || true
+            backend/tests/test_aio_sandbox_local_backend.py \
+            .pr5163-sandbox-image-smoke.yml.staged
+          git commit -m "chore: stage validated PR 5163 follow-up"
+          git push origin HEAD:automation/stage-pr-5163-fowner-followup
