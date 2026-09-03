@@ -5,12 +5,16 @@ import threading
 import time
 from collections.abc import Hashable
 from dataclasses import replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from deerflow.config.subagents_config import SubagentsAppConfig, get_subagents_app_config
 from deerflow.persistence.managed_subagents import ManagedSubagentDefinition, get_managed_subagent_store
 from deerflow.sandbox.security import is_host_bash_allowed
 from deerflow.subagents.builtins import BUILTIN_SUBAGENTS
 from deerflow.subagents.config import SubagentConfig
+
+if TYPE_CHECKING:
+    from deerflow.config.app_config import AppConfig
 
 logger = logging.getLogger(__name__)
 _MANAGED_SIGNATURE_TTL_SECONDS = 1.0
@@ -18,12 +22,17 @@ _managed_definitions_cache_lock = threading.RLock()
 _managed_definitions_cache: dict[Hashable, tuple[float, Hashable, tuple[ManagedSubagentDefinition, ...]]] = {}
 
 
-def _resolve_subagents_app_config(app_config: Any | None = None):
+def _resolve_subagents_app_config(app_config: "AppConfig | SubagentsAppConfig | None" = None) -> SubagentsAppConfig:
     if app_config is None:
-        from deerflow.config.subagents_config import get_subagents_app_config
-
         return get_subagents_app_config()
-    return getattr(app_config, "subagents", app_config)
+    if isinstance(app_config, SubagentsAppConfig):
+        return app_config
+
+    from deerflow.config.app_config import AppConfig
+
+    if isinstance(app_config, AppConfig):
+        return app_config.subagents
+    raise TypeError("app_config must be an AppConfig, SubagentsAppConfig, or None")
 
 
 def _build_custom_subagent_config(name: str, *, app_config: Any | None = None) -> SubagentConfig | None:
