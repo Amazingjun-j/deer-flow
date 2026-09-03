@@ -1,0 +1,71 @@
+name: Validate PR 5163 final FOWNER pin
+
+on:
+  push:
+    branches:
+      - automation/validate-pr-5163-fowner-pin
+
+permissions:
+  contents: read
+
+jobs:
+  validate-final-head:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SANDBOX_SMOKE_IMAGE_REF: ${{ vars.SANDBOX_SMOKE_IMAGE || 'enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest' }}
+      FOWNER_SMOKE_IMAGE_REF: ${{ vars.SANDBOX_FOWNER_SMOKE_IMAGE || 'enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.11.0' }}
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v6
+        with:
+          ref: fix/5161-aio-fowner-cap
+          fetch-depth: 0
+
+      - name: Guard exact final diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "8c0c4e08485d7bf955ce4ee70496523698b89513"
+          test "$(git diff --name-only e5d84734ac80bb418a95f97a9c87a47cb7d983d7..HEAD)" = ".github/workflows/sandbox-image-smoke.yml"
+          test "$(git diff --numstat e5d84734ac80bb418a95f97a9c87a47cb7d983d7..HEAD -- .github/workflows/sandbox-image-smoke.yml)" = $'1\t1\t.github/workflows/sandbox-image-smoke.yml'
+          grep -Fq 'FOWNER_SMOKE_IMAGE_REF: ${{ vars.SANDBOX_FOWNER_SMOKE_IMAGE || '\''enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.11.0'\'' }}' .github/workflows/sandbox-image-smoke.yml
+          git diff --check e5d84734ac80bb418a95f97a9c87a47cb7d983d7..HEAD
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.11.1'
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+
+      - name: Run offline sandbox regression suite
+        working-directory: backend
+        run: uv run pytest -m "not live" tests/test_aio_sandbox_local_backend.py -q
+
+      - name: Resolve baseline and FOWNER smoke images
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolve_image() {
+            local source_ref="$1"
+            local output_var="$2"
+            local repo_digest
+            docker pull "$source_ref" >/dev/null
+            repo_digest="$(docker image inspect "$source_ref" --format '{{index .RepoDigests 0}}')"
+            echo "$output_var=$repo_digest" >> "$GITHUB_ENV"
+            echo "$output_var=$repo_digest"
+          }
+          resolve_image "$SANDBOX_SMOKE_IMAGE_REF" DEER_FLOW_SANDBOX_SMOKE_IMAGE
+          resolve_image "$FOWNER_SMOKE_IMAGE_REF" DEER_FLOW_SANDBOX_FOWNER_SMOKE_IMAGE
+
+      - name: Run both real-image smoke tests
+        working-directory: backend
+        run: uv run pytest -m live tests/test_aio_sandbox_local_backend.py -v
