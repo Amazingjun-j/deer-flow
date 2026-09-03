@@ -1,0 +1,381 @@
+from pathlib import Path
+
+
+def replace_once(path: str, old: str, new: str) -> None:
+    p = Path(path)
+    text = p.read_text()
+    matches = text.count(old)
+    if matches != 1:
+        raise SystemExit(f"{path}: expected one match, found {matches}")
+    p.write_text(text.replace(old, new))
+
+
+workflow = ".github/workflows/sandbox-image-smoke.yml"
+replace_once(
+    workflow,
+    """# Real-image validation of the Docker sandbox hardening: pulls the shipped
+# AIO image and drives it through the production readiness deadline
+# (SANDBOX_LOCAL_PROVIDER_READY_TIMEOUT). The offline unit suite (-m \"not
+# live\") never runs this, so this dedicated job is the only place the
+# known-bad capability/startup regressions are caught before merge.
+#
+# Reproducibility: the image reference comes from the repository variable
+# SANDBOX_SMOKE_IMAGE (pin a digest there, e.g.
+# registry/.../all-in-one-sandbox@sha256:...). When unset it falls back to
+# the mutable :latest tag and the resolved digest is printed to the job
+# summary so a failure can be reproduced against the exact image tested.
+""",
+    """# Real-image validation of the Docker sandbox hardening. The job preserves
+# baseline coverage for the repository-configured/default AIO image and also
+# exercises the 1.11.0 startup path that requires FOWNER for chmod on
+# /run/user/1000. The offline unit suite (-m \"not live\") never runs these.
+#
+# Reproducibility: SANDBOX_SMOKE_IMAGE can pin the baseline image. Both that
+# image (or the :latest fallback) and the explicit 1.11.0 regression image are
+# pulled first and converted to immutable repo@sha256 references; the exact
+# digests are printed to the job summary before either live test runs.
+""",
+)
+replace_once(
+    workflow,
+    """    timeout-minutes: 20
+    env:
+      SANDBOX_SMOKE_IMAGE_REF: ${{ vars.SANDBOX_SMOKE_IMAGE || 'enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest' }}
+""",
+    """    timeout-minutes: 25
+    env:
+      SANDBOX_SMOKE_IMAGE_REF: ${{ vars.SANDBOX_SMOKE_IMAGE || 'enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest' }}
+      FOWNER_SMOKE_IMAGE_REF: enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.11.0
+""",
+)
+replace_once(
+    workflow,
+    """      - name: Resolve an immutable image reference for this run
+        # Pull once on the runner's platform and export the immutable
+        # repo@sha256 reference through GITHUB_ENV: the test then runs the
+        # exact image recorded here, and a tag moving between steps cannot
+        # make the summary name a different image than the one executed.
+        # (docker manifest inspect + jq is not used because picking a
+        # manifest from the index by hand can miss the runner's platform.)
+        run: |
+          set -euo pipefail
+          docker pull \"$SANDBOX_SMOKE_IMAGE_REF\" >/dev/null
+          repo_digest=\"$(docker image inspect \"$SANDBOX_SMOKE_IMAGE_REF\" --format '{{index .RepoDigests 0}}')\"
+          echo \"DEER_FLOW_SANDBOX_SMOKE_IMAGE=$repo_digest\" >> \"$GITHUB_ENV\"
+          echo \"Smoke-testing immutable reference: $repo_digest\" | tee -a \"$GITHUB_STEP_SUMMARY\"
+""",
+    """      - name: Resolve immutable image references for this run
+        # Pull on the runner's platform, then pass only immutable repo@sha256
+        # references to pytest. This keeps both the baseline and the 1.11.0
+        # regression run reproducible even if either source tag moves later.
+        run: |
+          set -euo pipefail
+
+          resolve_image() {
+            local source_ref=\"$1\"
+            local output_var=\"$2\"
+            local label=\"$3\"
+            local repo_digest
+
+            docker pull \"$source_ref\" >/dev/null
+            repo_digest=\"$(docker image inspect \"$source_ref\" --format '{{index .RepoDigests 0}}')\"
+            echo \"$output_var=$repo_digest\" >> \"$GITHUB_ENV\"
+            printf '%s: `%s`\\n' \"$label\" \"$repo_digest\" | tee -a \"$GITHUB_STEP_SUMMARY\"
+          }
+
+          resolve_image \"$SANDBOX_SMOKE_IMAGE_REF\" DEER_FLOW_SANDBOX_SMOKE_IMAGE \"Configured/default smoke image\"
+          resolve_image \"$FOWNER_SMOKE_IMAGE_REF\" DEER_FLOW_SANDBOX_FOWNER_SMOKE_IMAGE \"FOWNER regression image (1.11.0)\"
+""",
+)
+replace_once(
+    workflow,
+    "      - name: Run the live real-image smoke test\n",
+    "      - name: Run the live real-image smoke tests\n",
+)
+
+tests = "backend/tests/test_aio_sandbox_local_backend.py"
+old_block = '''# ── Real-image startup smoke test (docker-gated) ─────────────────────────────
+# Keep in sync with aio_sandbox_provider.DEFAULT_IMAGE.
+_DEFAULT_AIO_IMAGE = "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"
+
+
+def _docker_daemon_available() -> bool:
+    try:
+        subprocess.run(["docker", "info"], capture_output=True, timeout=30, check=True)
+        return True
+    except Exception:
+        return False
+
+
+# `live`: pulls and runs a mutable external image, so the default offline
+# suite (`make test` = `-m "not live"`) never touches the network. The
+# daemon probe happens inside the test body — never at collection time.
+@pytest.mark.live
+def test_default_image_starts_under_hardened_capabilities(monkeypatch):
+    """Real smoke test against the shipped default image — no subprocess mock.
+
+    The image's entrypoint (/opt/gem/run.sh) starts as root, creates the gem
+    account at runtime, chown -R's /opt/jupyter, prepares /run/user/1000 with
+    chmod, and drops to that user via su before starting the services. Under
+    the default hardened argv (--cap-drop=ALL + no-new-privileges), that
+    initialization needs CHOWN/FOWNER/SETUID/SETGID to be re-added, or the
+    container exits (set -e) before the readiness endpoint exists. Reaching
+    readiness through the real docker run proves the whole startup chain
+    survives the hardening.
+    """
+    from deerflow.community.aio_sandbox.backend import SANDBOX_LOCAL_PROVIDER_READY_TIMEOUT
+    from deerflow.community.aio_sandbox.local_backend import wait_for_sandbox_ready
+
+    if not _docker_daemon_available():
+        pytest.skip("requires a running Docker daemon")
+
+    backend = LocalContainerBackend(
+        # Pin via this override when wiring a dedicated integration job, so
+        # the run does not depend on a mutable :latest tag.
+        image=os.environ.get("DEER_FLOW_SANDBOX_SMOKE_IMAGE", _DEFAULT_AIO_IMAGE),
+        base_port=18210,
+        container_prefix="sandbox-smoke",
+        config_mounts=[],
+        environment={},
+    )
+    _clear_hardening_env(monkeypatch)
+
+    info = backend.create(thread_id="smoke", sandbox_id="caps-smoke")
+    try:
+        # The production deadline, single-sourced: the sync and async
+        # provider paths destroy the container after exactly this budget, so
+        # a longer one here could pass while every real acquisition fails.
+        # (create() completes docker run — including the image pull — before
+        # this timer starts, so the pull is not part of the budget.)
+        ready = wait_for_sandbox_ready(info.sandbox_url, timeout=SANDBOX_LOCAL_PROVIDER_READY_TIMEOUT)
+        if not ready:
+            # Fail diagnosably: the entrypoint's own log tells us whether the
+            # capability set is still incomplete (chown/chmod/useradd/su
+            # errors) or the services are merely slow.
+            logs = subprocess.run(
+                ["docker", "logs", info.container_name],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            # supervisord only reports exit codes in the container log; the
+            # failing program's own stderr goes to files inside the container.
+            # Pull the usual suspects so the failure is actionable in CI.
+            prog_logs = subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    info.container_name,
+                    "sh",
+                    "-c",
+                    "cat /var/log/supervisor/* 2>/dev/null | tail -n 40; echo '--- nginx -t ---'; nginx -t 2>&1; echo '--- nginx error.log ---'; tail -n 20 /var/log/nginx/error.log 2>/dev/null",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            tail = "\\n".join((logs.stdout + logs.stderr).splitlines()[-40:]) + "\\n" + (prog_logs.stdout or "")
+            pytest.fail(f"default image never became ready under the hardened capabilities: {info.sandbox_url}\\n--- last 40 container log lines ---\\n{tail}")
+        assert backend.is_alive(info)
+    finally:
+        backend.destroy(info)
+'''
+new_block = '''# ── Real-image startup smoke tests (docker-gated) ────────────────────────────
+# Keep the baseline default in sync with aio_sandbox_provider.DEFAULT_IMAGE.
+_DEFAULT_AIO_IMAGE = "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"
+# Dedicated regression target for #5161. The workflow resolves this tag to an
+# immutable digest before pytest runs so the CI result records the exact image.
+_FOWNER_REGRESSION_AIO_IMAGE = "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.11.0"
+
+
+def _docker_daemon_available() -> bool:
+    try:
+        subprocess.run(["docker", "info"], capture_output=True, timeout=30, check=True)
+        return True
+    except Exception:
+        return False
+
+
+def _assert_image_starts_under_hardened_capabilities(
+    monkeypatch,
+    *,
+    image: str,
+    sandbox_id: str,
+    failure_label: str,
+) -> None:
+    from deerflow.community.aio_sandbox.backend import SANDBOX_LOCAL_PROVIDER_READY_TIMEOUT
+    from deerflow.community.aio_sandbox.local_backend import wait_for_sandbox_ready
+
+    if not _docker_daemon_available():
+        pytest.skip("requires a running Docker daemon")
+
+    backend = LocalContainerBackend(
+        image=image,
+        base_port=18210,
+        container_prefix="sandbox-smoke",
+        config_mounts=[],
+        environment={},
+    )
+    _clear_hardening_env(monkeypatch)
+
+    info = backend.create(thread_id="smoke", sandbox_id=sandbox_id)
+    try:
+        # The production deadline, single-sourced: the sync and async
+        # provider paths destroy the container after exactly this budget, so
+        # a longer one here could pass while every real acquisition fails.
+        # (create() completes docker run — including the image pull — before
+        # this timer starts, so the pull is not part of the budget.)
+        ready = wait_for_sandbox_ready(info.sandbox_url, timeout=SANDBOX_LOCAL_PROVIDER_READY_TIMEOUT)
+        if not ready:
+            # Fail diagnosably: the entrypoint's own log tells us whether the
+            # capability set is still incomplete (chown/chmod/useradd/su
+            # errors) or the services are merely slow.
+            logs = subprocess.run(
+                ["docker", "logs", info.container_name],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            # supervisord only reports exit codes in the container log; the
+            # failing program's own stderr goes to files inside the container.
+            # Pull the usual suspects so the failure is actionable in CI.
+            prog_logs = subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    info.container_name,
+                    "sh",
+                    "-c",
+                    "cat /var/log/supervisor/* 2>/dev/null | tail -n 40; echo '--- nginx -t ---'; nginx -t 2>&1; echo '--- nginx error.log ---'; tail -n 20 /var/log/nginx/error.log 2>/dev/null",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            tail = "\\n".join((logs.stdout + logs.stderr).splitlines()[-40:]) + "\\n" + (prog_logs.stdout or "")
+            pytest.fail(
+                f"{failure_label} never became ready under the hardened capabilities: "
+                f"{info.sandbox_url}\\n--- last 40 container log lines ---\\n{tail}"
+            )
+        assert backend.is_alive(info)
+    finally:
+        backend.destroy(info)
+
+
+# `live`: pulls and runs external images, so the default offline suite
+# (`make test` = `-m "not live"`) never touches the network. The daemon probe
+# happens inside the helper — never at collection time.
+@pytest.mark.live
+def test_default_image_starts_under_hardened_capabilities(monkeypatch):
+    """Preserve real-image coverage for the configured/default AIO image.
+
+    This stays separate from the 1.11.0 regression because older images may
+    not execute the FOWNER-gated chmod added by the newer startup path.
+    """
+    _assert_image_starts_under_hardened_capabilities(
+        monkeypatch,
+        image=os.environ.get("DEER_FLOW_SANDBOX_SMOKE_IMAGE", _DEFAULT_AIO_IMAGE),
+        sandbox_id="caps-smoke-default",
+        failure_label="configured/default image",
+    )
+
+
+@pytest.mark.live
+def test_aio_1_11_image_starts_with_fowner_capability(monkeypatch):
+    """Regression smoke for #5161 against the recommended AIO 1.11.0 image.
+
+    Its entrypoint chmods /run/user/1000 after capabilities are dropped.
+    Without FOWNER that startup path exits before readiness; reaching the
+    endpoint proves the five-capability compatibility set covers the bug.
+    """
+    _assert_image_starts_under_hardened_capabilities(
+        monkeypatch,
+        image=os.environ.get("DEER_FLOW_SANDBOX_FOWNER_SMOKE_IMAGE", _FOWNER_REGRESSION_AIO_IMAGE),
+        sandbox_id="caps-smoke-fowner-1-11",
+        failure_label="AIO 1.11.0 FOWNER regression image",
+    )
+'''
+replace_once(tests, old_block, new_block)
+
+backend = "backend/packages/harness/deerflow/community/aio_sandbox/local_backend.py"
+replace_once(
+    backend,
+    """        # daemon's permissive defaults: all Linux capabilities are dropped
+        # except the minimum the shipped image's entrypoint needs to
+        # initialize itself, privilege escalation (setuid/sudo) is blocked,
+""",
+    """        # daemon's permissive defaults: all Linux capabilities are dropped
+        # except a small compatibility set needed across supported AIO image
+        # startup/runtime paths, privilege escalation (setuid/sudo) is blocked,
+""",
+)
+replace_once(
+    backend,
+    """            # The shipped/recommended AIO image starts as root, creates the
+            # gem account at runtime, chown -R's /opt/jupyter, prepares the
+            # gem-owned XDG runtime directory with chmod, and drops to that
+            # user via su before starting the services. CHOWN/SETUID/SETGID
+            # cover the ownership handoff; FOWNER is required by the 1.11.0
+            # entrypoint when chmod'ing /run/user/1000 after capabilities are
+            # dropped. The root nginx master also writes gem-owned logs under
+            # /var/log/nginx, which requires DAC_OVERRIDE — without it nginx
+            # dies with \"open() .../access.log failed (13: Permission denied)\"
+            # on every start (a runtime need, not just startup). Dropping ALL
+            # of these makes the image fail before the readiness endpoint
+            # exists.
+""",
+    """            # Supported shipped/recommended AIO images start as root, create
+            # the gem account at runtime, chown -R /opt/jupyter, and drop to
+            # that user via su. CHOWN/SETUID/SETGID cover that ownership
+            # handoff. FOWNER is specifically required by the newer 1.11.x
+            # startup path (regression-tested against 1.11.0), which chmods
+            # /run/user/1000 after capabilities are dropped. Images that do
+            # not perform that chmod do not need FOWNER; DeerFlow deliberately
+            # keeps this compatibility allowlist version-agnostic instead of
+            # guessing from mutable tags/digests or arbitrary custom images.
+            # The root nginx master also writes gem-owned logs under
+            # /var/log/nginx, which requires DAC_OVERRIDE — without it nginx
+            # dies with \"open() .../access.log failed (13: Permission denied)\"
+            # on every start (a runtime need, not just startup). Dropping ALL
+            # of these can make root-initialized images fail before readiness.
+""",
+)
+replace_once(
+    backend,
+    """            # For a pre-initialized non-root image nothing ever runs as
+            # root, so the handoff capabilities are not needed — and leaving
+            # them available for the container's lifetime would let
+            # sandboxed code chown/chmod bind-mounted paths or impersonate
+            # mounted-file UIDs/GIDs. Such images opt out with
+            # DEER_FLOW_SANDBOX_IMAGE_STARTUP_CAPS=0 (see CONFIGURATION.md),
+            # which drops every capability including these startup/runtime
+            # compatibility capabilities.
+""",
+    """            # A pre-initialized non-root image that needs none of these
+            # compatibility capabilities should opt out with
+            # DEER_FLOW_SANDBOX_IMAGE_STARTUP_CAPS=0 (see CONFIGURATION.md).
+            # That switch drops the whole set; it is intentionally not used
+            # to infer or trim individual capabilities for older/custom root-
+            # initialized images that may still need the remaining entries.
+""",
+)
+
+docs = "backend/docs/CONFIGURATION.md"
+replace_once(
+    docs,
+    """Local Docker sandbox containers are also hardened by default: all Linux capabilities are dropped (`--cap-drop=ALL`) except the minimum five the shipped image needs — `CHOWN` (the entrypoint chowns `/opt/jupyter`), `FOWNER` (AIO 1.11.0 prepares the gem user's XDG runtime directory with `chmod /run/user/1000` after capabilities are dropped), `SETUID`/`SETGID` (it creates the gem user and drops to it via `su`), and `DAC_OVERRIDE` (the root nginx master writes gem-owned logs under `/var/log/nginx`, a per-request runtime need) — privilege escalation is blocked across exec (`no-new-privileges`), and CPU/memory/PID resources are bounded.
+
+A custom image that is already fully initialized as a non-root user (no runtime root handoff) should set `DEER_FLOW_SANDBOX_IMAGE_STARTUP_CAPS=0` to drop all five retained capabilities. Leaving them enabled for the container's lifetime lets sandboxed code change ownership or mode on accessible bind-mounted paths, impersonate mounted-file UIDs/GIDs, or bypass discretionary access checks. Note that `no-new-privileges` does **not** mitigate that risk — it only blocks gaining privileges across exec; the risk comes from the capabilities that are already retained. One hardening knob is relaxed by default: the shipped AIO image runs with `seccomp=unconfined` because its Chromium browser does not start under Docker's default seccomp profile (syscall filtering is disabled — see the two seccomp variables below to change that). The following environment variables (set them in the gateway process, e.g. via `.env` loaded by docker-compose, or the gateway service `environment:`) tune or disable each knob:
+""",
+    """Local Docker sandbox containers are also hardened by default: all Linux capabilities are dropped (`--cap-drop=ALL`) except a five-capability compatibility allowlist — `CHOWN`, `FOWNER`, `SETUID`, `SETGID`, and `DAC_OVERRIDE` — while privilege escalation across exec stays blocked with `no-new-privileges` and CPU/memory/PID resources are bounded. `CHOWN`/`SETUID`/`SETGID` support the runtime user handoff and `DAC_OVERRIDE` supports the root nginx master's writes to gem-owned logs. `FOWNER` is specifically required by the newer AIO 1.11.x startup path (regression-tested against the recommended 1.11.0 image), which runs `chmod /run/user/1000` after capabilities are dropped. Images that do not perform that `chmod` do not need `FOWNER`; DeerFlow deliberately does not guess a smaller set from mutable tags, digests, or arbitrary custom images, so the default compatibility allowlist remains version-agnostic.
+
+A custom image that is already fully initialized as a non-root user and needs none of those compatibility capabilities should set `DEER_FLOW_SANDBOX_IMAGE_STARTUP_CAPS=0` to drop the whole set. This is an all-or-nothing opt-out, not a per-capability selector: an older or custom root-initialized image that does not need `FOWNER` may still require `CHOWN`, `SETUID`, `SETGID`, or `DAC_OVERRIDE` and should therefore leave the compatibility set enabled. Retained capabilities remain available for the container's lifetime and can let sandboxed code change ownership or mode on accessible bind-mounted paths, impersonate mounted-file UIDs/GIDs, or bypass discretionary access checks. `no-new-privileges` does **not** mitigate that existing-capability risk — it only blocks gaining new privileges across exec. One hardening knob is relaxed by default: the shipped AIO image runs with `seccomp=unconfined` because its Chromium browser does not start under Docker's default seccomp profile (syscall filtering is disabled — see the two seccomp variables below to change that). The following environment variables (set them in the gateway process, e.g. via `.env` loaded by docker-compose, or the gateway service `environment:`) tune or disable each knob:
+""",
+)
+replace_once(
+    docs,
+    """| `DEER_FLOW_SANDBOX_IMAGE_STARTUP_CAPS` | on | Keeps the five capabilities (`CHOWN`/`FOWNER`/`SETUID`/`SETGID`/`DAC_OVERRIDE`) that the shipped image needs: `CHOWN`/`SETUID`/`SETGID` for the runtime user handoff, `FOWNER` for the AIO 1.11.0 entrypoint's `chmod /run/user/1000`, and `DAC_OVERRIDE` because the root nginx master writes gem-owned log files for the container's lifetime. Set to `0` for images already fully initialized as a non-root user — every capability is then dropped, so sandboxed code cannot use the retained set to change ownership or mode on accessible bind-mounted paths, impersonate mounted-file UIDs/GIDs, or bypass discretionary access checks. |
+""",
+    """| `DEER_FLOW_SANDBOX_IMAGE_STARTUP_CAPS` | on | Keeps the five-capability compatibility set (`CHOWN`/`FOWNER`/`SETUID`/`SETGID`/`DAC_OVERRIDE`). `FOWNER` specifically covers the newer AIO 1.11.x startup `chmod /run/user/1000` path (tested with 1.11.0); images without that step do not need `FOWNER`, but DeerFlow does not infer per-image capability subsets from tags/digests/custom images. Set to `0` only for images that need none of the five — the switch drops the entire set. |
+""",
+)
