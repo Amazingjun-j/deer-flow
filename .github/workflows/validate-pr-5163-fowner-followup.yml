@@ -29,7 +29,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python .github/scripts/patch_pr_5163_fowner_followup.py
+          git show origin/automation/validate-pr-5163-fowner-smoke:.github/scripts/patch_pr_5163_fowner_followup.py > /tmp/patch_pr_5163_fowner_followup.py
+          python /tmp/patch_pr_5163_fowner_followup.py
           git diff --check
           changed="$(git diff --name-only | sort)"
           expected="$(printf '%s\n' \
