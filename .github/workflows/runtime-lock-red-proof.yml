@@ -1,0 +1,59 @@
+name: Runtime lock red proof
+
+on:
+  push:
+    branches:
+      - validate/runtime-thread-lock-red
+
+jobs:
+  prove-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.11.1'
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+      - name: Prove exact-main retention regression
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "683d146a30411a743bf314866678f1bdae3944e6"
+          cat > /tmp/test_runtime_lock_red.py <<'PY'
+          import asyncio
+          import pytest
+
+          from deerflow.runtime import goal as goal_runtime
+          from deerflow.runtime.runs import worker as run_worker
+
+
+          @pytest.mark.asyncio
+          @pytest.mark.parametrize(
+              ("lock_factory", "registry"),
+              [
+                  (goal_runtime.goal_thread_lock, goal_runtime._goal_locks_by_loop),
+                  (run_worker._checkpoint_thread_lock, run_worker._checkpoint_locks_by_loop),
+              ],
+          )
+          async def test_idle_entries_are_reclaimed(lock_factory, registry):
+              loop = asyncio.get_running_loop()
+              for index in range(512):
+                  async with lock_factory(f"completed-{index}"):
+                      pass
+              assert len(registry.get(loop, {})) == 0
+          PY
+          set +e
+          uv run pytest /tmp/test_runtime_lock_red.py -q > /tmp/red.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/red.log
+          test "$status" -ne 0
+          grep -q "2 failed" /tmp/red.log
+          grep -q "assert 512 == 0" /tmp/red.log
