@@ -19,6 +19,24 @@ CASES = (
 )
 
 
+def _participant_count(table, key: str) -> int:
+    loop = asyncio.get_running_loop()
+    with table._guard:
+        entries = table._entries_by_loop.get(loop)
+        if entries is None:
+            return 0
+        entry = entries.get(key)
+        return entry.participants if entry is not None else 0
+
+
+async def _wait_for_participants(table, key: str, expected: int) -> None:
+    for _ in range(100):
+        if _participant_count(table, key) == expected:
+            return
+        await asyncio.sleep(0)
+    assert _participant_count(table, key) == expected
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("lock_factory", "table"), CASES)
 async def test_idle_entries_are_reclaimed(lock_factory: LockFactory, table) -> None:
@@ -55,13 +73,18 @@ async def test_waiter_cannot_be_bypassed(lock_factory: LockFactory, table) -> No
     first_task = asyncio.create_task(first())
     await asyncio.wait_for(first_entered.wait(), 2)
     second_task = asyncio.create_task(second())
-    await asyncio.sleep(0)
+    await _wait_for_participants(table, key, 2)
+
     release_first.set()
     await asyncio.wait_for(first_task, 2)
-    third_task = asyncio.create_task(third())
     await asyncio.wait_for(second_entered.wait(), 2)
+    assert _participant_count(table, key) == 1
+
+    third_task = asyncio.create_task(third())
+    await _wait_for_participants(table, key, 2)
     await asyncio.sleep(0)
     assert not third_entered.is_set()
+
     release_second.set()
     await asyncio.wait_for(asyncio.gather(second_task, third_task), 2)
     assert table._entry_count() == 0
@@ -82,12 +105,13 @@ async def test_cancelled_waiter_checks_in(lock_factory: LockFactory, table) -> N
     holder_task = asyncio.create_task(holder())
     await asyncio.wait_for(holder_entered.wait(), 2)
     waiter_task = asyncio.create_task(_hold_once(lock_factory, key))
-    await asyncio.sleep(0)
-    assert table._entry_count() == 1
+    await _wait_for_participants(table, key, 2)
+
     waiter_task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await waiter_task
-    assert table._entry_count() == 1
+    assert _participant_count(table, key) == 1
+
     release_holder.set()
     await asyncio.wait_for(holder_task, 2)
     assert table._entry_count() == 0
