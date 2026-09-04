@@ -41,6 +41,7 @@ from deerflow.agents.middlewares.input_sanitization_middleware import neutralize
 from deerflow.config.app_config import AppConfig
 from deerflow.config.database_config import CheckpointChannelMode
 from deerflow.constants import TOOL_RESULTS_DIRNAME
+from deerflow.runtime.async_keyed_lock import AsyncKeyedLockTable
 from deerflow.runtime.checkpoint_mode import (
     aensure_checkpoint_mode_compatible,
     inject_checkpoint_mode,
@@ -90,8 +91,7 @@ from .schemas import RunStatus
 
 logger = logging.getLogger(__name__)
 
-_checkpoint_locks_guard = threading.Lock()
-_checkpoint_locks_by_loop: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, asyncio.Lock]] = weakref.WeakKeyDictionary()
+_checkpoint_thread_locks = AsyncKeyedLockTable[str]()
 
 # Completed LangGraph runs can leave callback Contexts and AsyncPregelLoop
 # instances in unreachable reference cycles. They are collectable, but a busy
@@ -232,18 +232,7 @@ def _release_run_scoped_references(
 @asynccontextmanager
 async def _checkpoint_thread_lock(thread_id: str) -> AsyncIterator[None]:
     """Serialize checkpoint mutations for one thread without blocking goal commands."""
-    loop = asyncio.get_running_loop()
-    with _checkpoint_locks_guard:
-        locks = _checkpoint_locks_by_loop.get(loop)
-        if locks is None:
-            locks = {}
-            _checkpoint_locks_by_loop[loop] = locks
-        lock = locks.get(thread_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            locks[thread_id] = lock
-
-    async with lock:
+    async with _checkpoint_thread_locks.hold(thread_id):
         yield
 
 

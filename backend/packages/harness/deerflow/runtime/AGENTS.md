@@ -1,3 +1,16 @@
+### Runtime Per-Thread Lock Tables
+
+Goal mutations and checkpoint mutations use separate
+`AsyncKeyedLockTable` instances so goal commands never queue behind the
+worker's longer checkpoint-critical sections. Each table is partitioned
+by event loop because a contended `asyncio.Lock` is loop-affine. A key's
+entry counts both the current holder and queued waiters, and is reclaimed
+only when that participant count reaches zero. Cancellation while waiting
+must check the same entry back in. Never delete an entry merely when its
+holder releases: an already-queued waiter plus a later caller could then
+split onto two different locks and overlap the supposedly serialized
+critical section.
+
 ### Stream Bridge Heartbeats
 
 Memory and Redis bridges take their default idle heartbeat cadence from the startup-only `stream_bridge.heartbeat_interval_seconds` setting. Keep the default on the bridge instance so SSE, `/wait`, and internal subscribers stay aligned; an explicit `subscribe(..., heartbeat_interval=...)` remains a per-subscription override.
