@@ -241,3 +241,13 @@ PYTHONPATH=. uv run python scripts/benchmark/checkpoint/bench_production.py \
 PYTHONPATH=. uv run python scripts/benchmark/checkpoint/summarize_production.py \
   /tmp/production-bench.jsonl
 ```
+
+### Event-loop keyed runtime locks
+
+`runtime/keyed_lock.py::AsyncKeyedLockTable` owns keyed `asyncio.Lock`
+registries used by goal and checkpoint mutation paths. It keeps locks
+event-loop-local and counts both the current holder and queued waiters
+before awaiting. Entries are reclaimed only after the final participant
+exits, including cancellation paths. Never delete an entry merely when a
+holder releases it: a queued waiter may still depend on the same lock and
+a newly-created lock would let a later caller bypass that waiter.
