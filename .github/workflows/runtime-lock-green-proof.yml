@@ -1,0 +1,42 @@
+name: Runtime lock green proof
+
+on:
+  push:
+    branches:
+      - validate/runtime-thread-lock-green
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 92e095e67caf247e209aa875e200b0c660002e48
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.11.1'
+      - name: Verify exact implementation head
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "92e095e67caf247e209aa875e200b0c660002e48"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev --extra postgres
+      - name: Focused runtime regressions
+        working-directory: backend
+        run: uv run pytest tests/test_runtime_thread_locks.py tests/test_goal_worker.py tests/test_run_duration_checkpoint.py tests/test_run_worker_delta_resume.py tests/test_run_worker_rollback.py tests/test_gateway_services.py -q
+      - name: Format and lint checks
+        working-directory: backend
+        run: make lint
+      - name: Blocking I/O suite
+        working-directory: backend
+        run: make test-blocking-io
+      - name: Full backend suite
+        working-directory: backend
+        run: make test
+      - name: Diff hygiene
+        shell: bash
+        run: git diff --check 683d146a30411a743bf314866678f1bdae3944e6 92e095e67caf247e209aa875e200b0c660002e48
