@@ -1,0 +1,163 @@
+name: Temporary lock retention full-suite comparison
+
+on:
+  push:
+    branches: [validation/lock-retention-c875d670]
+
+permissions:
+  contents: write
+
+jobs:
+  compare:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: deerflow
+          POSTGRES_PASSWORD: deerflow
+          POSTGRES_DB: deerflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_POSTGRES_URI: postgresql://deerflow:deerflow@localhost:5432/deerflow_test?sslmode=disable
+      DEDUPE_TEST_POSTGRES_URL: postgresql://deerflow:deerflow@localhost:5432/deerflow_test?sslmode=disable
+      MAIN_SHA: 683d146a30411a743bf314866678f1bdae3944e6
+      CANDIDATE_SHA: c875d670913d1d08e42d84b2963f15f0dec3f774
+
+    steps:
+      - name: Checkout validation branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.11.1'
+
+      - name: Install candidate dependencies
+        shell: bash
+        run: |
+          git checkout "$CANDIDATE_SHA"
+          cd backend
+          uv sync --group dev --extra postgres
+
+      - name: Run exact-main and candidate full suites
+        id: compare
+        shell: bash
+        run: |
+          set +e
+          git checkout "$MAIN_SHA"
+          (cd backend && make test) > /tmp/main-test.log 2>&1
+          main_rc=$?
+
+          git checkout "$CANDIDATE_SHA"
+          (cd backend && make test) > /tmp/candidate-test.log 2>&1
+          candidate_rc=$?
+          set -e
+
+          MAIN_RC="$main_rc" CANDIDATE_RC="$candidate_rc" python - <<'PY'
+          from __future__ import annotations
+
+          import os
+          import re
+          from pathlib import Path
+
+          main_sha = os.environ["MAIN_SHA"]
+          candidate_sha = os.environ["CANDIDATE_SHA"]
+          main_rc = int(os.environ["MAIN_RC"])
+          candidate_rc = int(os.environ["CANDIDATE_RC"])
+
+          def summarize(path: str) -> tuple[list[str], list[str], list[str]]:
+              lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+              failures: list[str] = []
+              summary_lines: list[str] = []
+              for line in lines:
+                  stripped = line.strip()
+                  if stripped.startswith("FAILED ") or stripped.startswith("ERROR "):
+                      failures.append(stripped)
+                  if re.search(r"\b(?:passed|failed|skipped|error|errors)\b", stripped, re.I):
+                      if (
+                          " in " in stripped
+                          or stripped.startswith("=")
+                          or "short test summary" in stripped.lower()
+                      ):
+                          summary_lines.append(stripped)
+              return failures[-200:], summary_lines[-80:], lines[-180:]
+
+          main_failures, main_summary, main_tail = summarize("/tmp/main-test.log")
+          candidate_failures, candidate_summary, candidate_tail = summarize("/tmp/candidate-test.log")
+
+          out = [
+              "Runtime lock retention full-suite comparison",
+              "============================================",
+              f"main_sha={main_sha}",
+              f"candidate_sha={candidate_sha}",
+              f"main_rc={main_rc}",
+              f"candidate_rc={candidate_rc}",
+              "",
+              "[main failure lines]",
+              *(main_failures or ["<none>"]),
+              "",
+              "[candidate failure lines]",
+              *(candidate_failures or ["<none>"]),
+              "",
+              "[main summary lines]",
+              *(main_summary or ["<none>"]),
+              "",
+              "[candidate summary lines]",
+              *(candidate_summary or ["<none>"]),
+              "",
+              "[main tail]",
+              *main_tail,
+              "",
+              "[candidate tail]",
+              *candidate_tail,
+              "",
+          ]
+          Path("/tmp/full-suite-comparison.txt").write_text("\n".join(out), encoding="utf-8")
+          PY
+
+          echo "main_rc=$main_rc" >> "$GITHUB_OUTPUT"
+          echo "candidate_rc=$candidate_rc" >> "$GITHUB_OUTPUT"
+
+      - name: Publish text comparison to isolated results branch
+        shell: bash
+        run: |
+          git checkout -B validation/lock-retention-results "$CANDIDATE_SHA"
+          mkdir -p .validation
+          cp /tmp/full-suite-comparison.txt .validation/full-suite-comparison.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .validation/full-suite-comparison.txt
+          git commit -m "ci: record lock retention full-suite comparison"
+          git push --force origin HEAD:validation/lock-retention-results
+
+      - name: Report return codes
+        run: |
+          echo "exact main make test rc=${{ steps.compare.outputs.main_rc }}"
+          echo "candidate make test rc=${{ steps.compare.outputs.candidate_rc }}"
