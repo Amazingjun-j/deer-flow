@@ -1,0 +1,27 @@
+name: Format probe 5176
+
+on:
+  push:
+    branches:
+      - validate/format-probe-5176
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.11.1'
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+      - name: Show exact Ruff formatting diff
+        working-directory: backend
+        run: uv run ruff format --diff packages/harness/deerflow/runtime/keyed_lock.py || true
