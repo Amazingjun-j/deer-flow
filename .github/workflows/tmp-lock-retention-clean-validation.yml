@@ -1,0 +1,147 @@
+name: Temporary clean runtime lock retention validation
+
+on:
+  push:
+    branches: [validation/lock-retention-c875d670]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: deerflow
+          POSTGRES_PASSWORD: deerflow
+          POSTGRES_DB: deerflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_POSTGRES_URI: postgresql://deerflow:deerflow@localhost:5432/deerflow_test?sslmode=disable
+      DEDUPE_TEST_POSTGRES_URL: postgresql://deerflow:deerflow@localhost:5432/deerflow_test?sslmode=disable
+
+    steps:
+      - name: Checkout validation branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.11.1'
+
+      - name: Install exact candidate dependencies
+        shell: bash
+        run: |
+          git checkout c875d670913d1d08e42d84b2963f15f0dec3f774
+          cd backend
+          uv sync --group dev --extra postgres
+
+      - name: Prove the regression on exact upstream main
+        shell: bash
+        run: |
+          git checkout 683d146a30411a743bf314866678f1bdae3944e6
+          cd backend
+          uv run python - <<'PY'
+          import asyncio
+
+          import deerflow.runtime.goal as goal_module
+          import deerflow.runtime.runs.worker as worker_module
+
+
+          async def main() -> None:
+              for index in range(200):
+                  async with goal_module.goal_thread_lock(f"goal-thread-{index}"):
+                      pass
+                  async with worker_module._checkpoint_thread_lock(f"checkpoint-thread-{index}"):
+                      pass
+
+              loop = asyncio.get_running_loop()
+              goal_retained = len(goal_module._goal_locks_by_loop.get(loop, {}))
+              checkpoint_retained = len(worker_module._checkpoint_locks_by_loop.get(loop, {}))
+              print(f"exact-main retained entries: goal={goal_retained}, checkpoint={checkpoint_retained}")
+
+              try:
+                  assert goal_retained == 0
+                  assert checkpoint_retained == 0
+              except AssertionError:
+                  print("EXPECTED_RED: exact main does not reclaim idle per-thread lock entries")
+                  return
+              raise SystemExit("Regression probe unexpectedly passed on exact main")
+
+
+          asyncio.run(main())
+          PY
+
+      - name: Return to exact clean candidate
+        run: git checkout c875d670913d1d08e42d84b2963f15f0dec3f774
+
+      - name: Verify candidate formatting and lint
+        working-directory: backend
+        run: |
+          uv run ruff format --check \
+            packages/harness/deerflow/runtime/async_keyed_lock.py \
+            packages/harness/deerflow/runtime/goal.py \
+            packages/harness/deerflow/runtime/runs/worker.py \
+            tests/test_async_keyed_lock.py
+          make lint
+
+      - name: Run focused runtime lock regressions
+        working-directory: backend
+        run: >-
+          uv run pytest -q
+          tests/test_async_keyed_lock.py
+          tests/test_goal_worker.py
+          tests/test_run_worker_delta_resume.py
+          tests/test_run_duration_checkpoint.py
+
+      - name: Run strict blocking-I/O suite
+        working-directory: backend
+        run: make test-blocking-io
+
+      - name: Run full backend offline suite
+        working-directory: backend
+        run: make test
+
+      - name: Verify exact final diff and file set
+        shell: bash
+        run: |
+          git diff --check 683d146a30411a743bf314866678f1bdae3944e6..c875d670913d1d08e42d84b2963f15f0dec3f774
+          expected=$(cat <<'EOF'
+          backend/packages/harness/deerflow/runtime/AGENTS.md
+          backend/packages/harness/deerflow/runtime/async_keyed_lock.py
+          backend/packages/harness/deerflow/runtime/goal.py
+          backend/packages/harness/deerflow/runtime/runs/worker.py
+          backend/tests/test_async_keyed_lock.py
+          EOF
+          )
+          actual=$(git diff --name-only 683d146a30411a743bf314866678f1bdae3944e6..c875d670913d1d08e42d84b2963f15f0dec3f774)
+          test "$actual" = "$expected"
+          test -z "$(git status --porcelain)"
+          git diff --stat 683d146a30411a743bf314866678f1bdae3944e6..c875d670913d1d08e42d84b2963f15f0dec3f774
