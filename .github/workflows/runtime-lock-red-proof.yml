@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 2
+          ref: 683d146a30411a743bf314866678f1bdae3944e6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "683d146a30411a743bf314866678f1bdae3944e6"
+          test "$(git rev-parse HEAD)" = "683d146a30411a743bf314866678f1bdae3944e6"
           cat > /tmp/test_runtime_lock_red.py <<'PY'
           import asyncio
           import pytest
