@@ -23,6 +23,8 @@ from deerflow.subagents.executor import (
 
 logger = logging.getLogger(__name__)
 
+_SHUTDOWN_DRAIN_POLL_SECONDS = 0.1
+
 
 def _usage(records: list[dict[str, Any]] | None) -> dict[str, int] | None:
     if not records:
@@ -74,6 +76,10 @@ class SubagentBatchService:
         execution_ids = list(self._execution_ids.values())
         for execution_id in execution_ids:
             request_cancel_background_task(execution_id)
+        if execution_ids:
+            await asyncio.gather(
+                *(self._drain_cancelled_execution(execution_id) for execution_id in execution_ids),
+            )
         tasks = list(self._executions.values())
         for task in tasks:
             task.cancel()
@@ -82,6 +88,17 @@ class SubagentBatchService:
         self._executions.clear()
         self._execution_ids.clear()
         self._item_batches.clear()
+
+    async def _drain_cancelled_execution(self, execution_id: str) -> None:
+        """Wait for isolated execution cleanup before dropping its registry entry."""
+        while True:
+            result = get_background_task_result(execution_id)
+            if result is None:
+                return
+            if result.status.is_terminal or getattr(result, "completed_at", None) is not None:
+                cleanup_background_task(execution_id)
+                return
+            await asyncio.sleep(_SHUTDOWN_DRAIN_POLL_SECONDS)
 
     async def _run(self) -> None:
         while not self._stop.is_set():
@@ -263,6 +280,9 @@ class SubagentBatchService:
                         raise asyncio.CancelledError
                 except TimeoutError:
                     pass
+
+            if self._stop.is_set():
+                raise asyncio.CancelledError
 
             raw_result = result.result or ""
             if getattr(result, "admission_failure", False):
