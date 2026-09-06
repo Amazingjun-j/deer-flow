@@ -290,3 +290,56 @@ async def test_executor_admission_failure_requeues_instead_of_finalizing(monkeyp
     assert repository.requeued is not None
     assert repository.requeued[0] == "item-1"
     assert repository.finalized is False
+
+
+@pytest.mark.asyncio
+async def test_stop_drains_background_execution_before_forgetting_supervisor(monkeypatch) -> None:
+    result = SimpleNamespace(status=FakeStatus.RUNNING, completed_at=None)
+    lifecycle: list[str] = []
+
+    async def supervisor() -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            lifecycle.append("supervisor-cancelled")
+            raise
+
+    service = SubagentBatchService(
+        repository=SimpleNamespace(),
+        config=SubagentBatchesConfig(),
+        runtime_config=SubagentRuntimeConfig(max_running=1),
+    )
+    task = asyncio.create_task(supervisor())
+    service._executions["item-1"] = task
+    service._execution_ids["item-1"] = "execution-1"
+
+    def request_cancel(execution_id: str) -> None:
+        assert execution_id == "execution-1"
+        lifecycle.append("cancel-requested")
+
+        async def finish_cancellation() -> None:
+            await asyncio.sleep(0)
+            result.status = FakeStatus.COMPLETED
+            lifecycle.append("execution-terminal")
+
+        asyncio.create_task(finish_cancellation())
+
+    monkeypatch.setattr(service_module, "request_cancel_background_task", request_cancel)
+    monkeypatch.setattr(service_module, "get_background_task_result", lambda _execution_id: result)
+    monkeypatch.setattr(
+        service_module,
+        "cleanup_background_task",
+        lambda execution_id: lifecycle.append(f"cleanup:{execution_id}"),
+    )
+
+    await asyncio.wait_for(service.stop(), timeout=1)
+
+    assert lifecycle == [
+        "cancel-requested",
+        "execution-terminal",
+        "cleanup:execution-1",
+        "supervisor-cancelled",
+    ]
+    assert task.cancelled()
+    assert service._execution_ids == {}
+    assert service._executions == {}
