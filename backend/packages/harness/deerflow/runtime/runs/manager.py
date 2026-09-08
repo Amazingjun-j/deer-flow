@@ -1566,12 +1566,10 @@ class RunManager:
                 if existing.thread_id != thread_id or existing.user_id != user_id:
                     raise RuntimeError("Run idempotency key resolved to a different thread or user") from conflict
                 current = self._runs.get(existing.run_id)
-                if current is None:
-                    self._runs[existing.run_id] = existing
-                    self._index_run_locked(existing)
-                    current = existing
-                current.idempotency_reused = True
-                return current
+                if current is not None:
+                    existing = current
+                existing.idempotency_reused = True
+                return existing
 
             # 1) Local inflight check (same-worker guard; cross-worker is the
             #    store's partial unique index below).
