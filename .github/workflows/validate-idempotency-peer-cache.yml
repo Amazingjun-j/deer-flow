@@ -1,13 +1,9 @@
 name: Validate idempotency peer-cache candidate
-
 on:
   push:
-    branches:
-      - fix/idempotency-peer-run-cache
-
+    branches: [fix/idempotency-peer-run-cache]
 permissions:
   contents: write
-
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -16,212 +12,111 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-
       - uses: astral-sh/setup-uv@v7
         with:
           version: '0.11.1'
-
       - name: Install backend dependencies
         working-directory: backend
         run: |
           uv lock --check
           uv sync --group dev
-
-      - name: Add regressions on unpatched main
+      - name: Add regressions
         run: |
           cat > backend/tests/test_thread_run_idempotency_peer_cache.py <<'PY'
           from datetime import UTC, datetime, timedelta
-
           import pytest
-
           from deerflow.config.run_ownership_config import RunOwnershipConfig
           from deerflow.runtime import RunManager, RunStatus
           from deerflow.runtime.runs.store.memory import MemoryRunStore
 
-
           def _lease_config() -> RunOwnershipConfig:
-              return RunOwnershipConfig(
-                  lease_seconds=30,
-                  grace_seconds=10,
-                  heartbeat_enabled=True,
-              )
-
+              return RunOwnershipConfig(lease_seconds=30, grace_seconds=10, heartbeat_enabled=True)
 
           @pytest.mark.anyio
           async def test_peer_idempotency_reuse_does_not_shadow_durable_completion():
               store = MemoryRunStore()
-              owner = RunManager(
-                  store=store,
-                  worker_id="worker-a",
-                  run_ownership_config=_lease_config(),
-              )
-              peer = RunManager(
-                  store=store,
-                  worker_id="worker-b",
-                  run_ownership_config=_lease_config(),
-              )
-
-              original = await owner.create_or_reject(
-                  "thread-1",
-                  idempotency_key="request-1",
-              )
+              owner = RunManager(store=store, worker_id="worker-a", run_ownership_config=_lease_config())
+              peer = RunManager(store=store, worker_id="worker-b", run_ownership_config=_lease_config())
+              original = await owner.create_or_reject("thread-1", idempotency_key="request-1")
               await owner.set_status(original.run_id, RunStatus.running)
-
-              reused = await peer.create_or_reject(
-                  "thread-1",
-                  idempotency_key="request-1",
-              )
-              assert reused.store_only is True
-              assert reused.task is None
-
+              reused = await peer.create_or_reject("thread-1", idempotency_key="request-1")
+              assert reused.store_only is True and reused.task is None
               await owner.set_status(original.run_id, RunStatus.success)
-
               observed = await peer.get(original.run_id)
-              assert observed is not None
-              assert observed.status == RunStatus.success
-
-              next_run = await peer.create_or_reject(
-                  "thread-1",
-                  idempotency_key="request-2",
-              )
+              assert observed is not None and observed.status == RunStatus.success
+              next_run = await peer.create_or_reject("thread-1", idempotency_key="request-2")
               assert next_run.run_id != original.run_id
-
 
           @pytest.mark.anyio
           async def test_peer_idempotency_reuse_does_not_mask_orphan_recovery():
               store = MemoryRunStore()
-              owner = RunManager(
-                  store=store,
-                  worker_id="worker-a",
-                  run_ownership_config=_lease_config(),
-              )
-              peer = RunManager(
-                  store=store,
-                  worker_id="worker-b",
-                  run_ownership_config=_lease_config(),
-              )
-
-              original = await owner.create_or_reject(
-                  "thread-1",
-                  idempotency_key="request-1",
-              )
+              owner = RunManager(store=store, worker_id="worker-a", run_ownership_config=_lease_config())
+              peer = RunManager(store=store, worker_id="worker-b", run_ownership_config=_lease_config())
+              original = await owner.create_or_reject("thread-1", idempotency_key="request-1")
               await owner.set_status(original.run_id, RunStatus.running)
-
-              reused = await peer.create_or_reject(
-                  "thread-1",
-                  idempotency_key="request-1",
-              )
-              assert reused.store_only is True
-              assert reused.owner_worker_id == "worker-a"
-              assert reused.task is None
-
+              reused = await peer.create_or_reject("thread-1", idempotency_key="request-1")
+              assert reused.store_only is True and reused.owner_worker_id == "worker-a" and reused.task is None
               expired = (datetime.now(UTC) - timedelta(seconds=60)).isoformat()
-              updated = await store.update_lease(
-                  original.run_id,
-                  owner_worker_id="worker-a",
-                  lease_expires_at=expired,
-              )
-              assert updated is True
-
-              recovered = await peer.reconcile_orphaned_inflight_runs(
-                  error="owner lease expired",
-              )
-
+              assert await store.update_lease(original.run_id, owner_worker_id="worker-a", lease_expires_at=expired) is True
+              recovered = await peer.reconcile_orphaned_inflight_runs(error="owner lease expired")
               assert [record.run_id for record in recovered] == [original.run_id]
               stored = await store.get(original.run_id)
-              assert stored is not None
-              assert stored["status"] == "error"
+              assert stored is not None and stored["status"] == "error"
           PY
-
-      - name: Prove regressions fail on upstream main
+      - name: Prove regressions fail before fix
         working-directory: backend
         run: |
           set +e
-          uv run pytest tests/test_thread_run_idempotency_peer_cache.py::test_peer_idempotency_reuse_does_not_shadow_durable_completion -q
-          first=$?
-          uv run pytest tests/test_thread_run_idempotency_peer_cache.py::test_peer_idempotency_reuse_does_not_mask_orphan_recovery -q
-          second=$?
+          uv run pytest tests/test_thread_run_idempotency_peer_cache.py::test_peer_idempotency_reuse_does_not_shadow_durable_completion -q; first=$?
+          uv run pytest tests/test_thread_run_idempotency_peer_cache.py::test_peer_idempotency_reuse_does_not_mask_orphan_recovery -q; second=$?
           set -e
-          if [ "$first" -eq 0 ] || [ "$second" -eq 0 ]; then
-            echo "Expected both regressions to fail before the fix; got first=$first second=$second"
-            exit 1
-          fi
-
-      - name: Apply runtime fix
+          test "$first" -ne 0 && test "$second" -ne 0
+      - name: Apply fix
         run: |
           python - <<'PY'
           from pathlib import Path
-
-          path = Path("backend/packages/harness/deerflow/runtime/runs/manager.py")
-          text = path.read_text()
-          old = '''                current = self._runs.get(existing.run_id)\n                if current is None:\n                    self._runs[existing.run_id] = existing\n                    self._index_run_locked(existing)\n                    current = existing\n                current.idempotency_reused = True\n                return current\n'''
-          new = '''                current = self._runs.get(existing.run_id)\n                if current is not None:\n                    existing = current\n                existing.idempotency_reused = True\n                return existing\n'''
-          if text.count(old) != 1:
-              raise SystemExit("idempotency reuse block did not match exactly once")
-          path.write_text(text.replace(old, new))
+          p=Path("backend/packages/harness/deerflow/runtime/runs/manager.py")
+          s=p.read_text()
+          old='''                current = self._runs.get(existing.run_id)\n                if current is None:\n                    self._runs[existing.run_id] = existing\n                    self._index_run_locked(existing)\n                    current = existing\n                current.idempotency_reused = True\n                return current\n'''
+          new='''                current = self._runs.get(existing.run_id)\n                if current is not None:\n                    existing = current\n                existing.idempotency_reused = True\n                return existing\n'''
+          assert s.count(old)==1
+          p.write_text(s.replace(old,new))
           PY
-
-      - name: Format exact backend tree
+      - name: Format and lint
         working-directory: backend
-        run: make format
-
-      - name: Check lint and formatting
-        working-directory: backend
-        run: make lint
-
-      - name: Remove private validation workflow from candidate tree
-        run: git rm .github/workflows/validate-idempotency-peer-cache.yml
-
-      - name: Verify final diff scope and whitespace
-        env:
-          BASE_SHA: 062273f850902ee4072626cad2dc0f614a386aad
         run: |
-          git diff --check "$BASE_SHA"
-          changed="$(git diff --name-only "$BASE_SHA")"
-          printf '%s\n' "$changed"
+          make format
+          make lint
+      - name: Stage clean candidate
+        run: |
+          git add -f backend/tests/test_thread_run_idempotency_peer_cache.py
+          git add backend/packages/harness/deerflow/runtime/runs/manager.py
+          git rm .github/workflows/validate-idempotency-peer-cache.yml
+          git diff --cached --check 062273f850902ee4072626cad2dc0f614a386aad
+      - name: Commit clean candidate
+        run: |
+          git config user.name Jun
+          git config user.email 84921700+Amazingjun-j@users.noreply.github.com
+          git commit -m "fix(runtime): isolate peer idempotent run snapshots"
+          changed="$(git diff --name-only 062273f850902ee4072626cad2dc0f614a386aad HEAD)"
           expected=$'backend/packages/harness/deerflow/runtime/runs/manager.py\nbackend/tests/test_thread_run_idempotency_peer_cache.py'
-          if [ "$changed" != "$expected" ]; then
-            echo "Unexpected final diff scope"
-            exit 1
-          fi
-
-      - name: Build clean candidate commit locally
-        run: |
-          git config user.name "Jun"
-          git config user.email "84921700+Amazingjun-j@users.noreply.github.com"
-          git add backend/packages/harness/deerflow/runtime/runs/manager.py backend/tests/test_thread_run_idempotency_peer_cache.py
-          git commit -am "fix(runtime): isolate peer idempotent run snapshots"
-
+          test "$changed" = "$expected"
+          git diff --check 062273f850902ee4072626cad2dc0f614a386aad HEAD
       - name: Check repository guidance shape
-        run: >-
-          python scripts/check_agent_guidance.py
-          --base-ref "062273f850902ee4072626cad2dc0f614a386aad"
-          --head-ref HEAD
-          --github-annotations
-
-      - name: Run targeted runtime regressions
+        run: python scripts/check_agent_guidance.py --base-ref 062273f850902ee4072626cad2dc0f614a386aad --head-ref HEAD --github-annotations
+      - name: Run targeted runtime validation
         working-directory: backend
-        run: >-
-          uv run pytest -q
-          tests/test_thread_run_idempotency_peer_cache.py
-          tests/test_thread_run_idempotency.py
-          tests/test_multi_worker_run_ownership.py
-          tests/test_gateway_services.py
-          tests/test_runtime_lifecycle_e2e.py
-
+        run: uv run pytest -q tests/test_thread_run_idempotency_peer_cache.py tests/test_thread_run_idempotency.py tests/test_multi_worker_run_ownership.py tests/test_gateway_services.py tests/test_runtime_lifecycle_e2e.py
       - name: Run full offline backend suite
         working-directory: backend
         run: make test
-
-      - name: Verify formatter left the committed tree clean
+      - name: Final lint and clean-tree check
         working-directory: backend
         run: |
           make lint
           git diff --exit-code
-
-      - name: Publish validated candidate commit to private-first branch
+      - name: Publish validated candidate commit
         run: git push origin HEAD:fix/idempotency-peer-run-cache
