@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
 _COMMAND_CAPTURE_LIMIT_BYTES = 10 * 1024 * 1024
 _PIPE_DRAIN_JOIN_TIMEOUT_SECONDS = 0.2
+_MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024
 
 
 class _BoundedPipeCapture:
@@ -816,6 +817,9 @@ class LocalSandbox(Sandbox):
             raise type(e)(e.errno, e.strerror, path) from None
 
     def download_file(self, path: str) -> bytes:
+        return self.download_file_bounded(path, max_bytes=_MAX_DOWNLOAD_SIZE)
+
+    def download_file_bounded(self, path: str, *, max_bytes: int) -> bytes:
         normalised = path.replace("\\", "/")
         stripped_path = normalised.lstrip("/")
         allowed_prefix = VIRTUAL_PATH_PREFIX.lstrip("/")
@@ -824,15 +828,20 @@ class LocalSandbox(Sandbox):
             raise PermissionError(errno.EACCES, f"Access denied: path must be under '{VIRTUAL_PATH_PREFIX}'", path)
 
         resolved_path = self._resolve_path(path)
-        max_download_size = 100 * 1024 * 1024
+        limit = self._effective_download_limit(max_bytes, _MAX_DOWNLOAD_SIZE)
         try:
             file_size = os.path.getsize(resolved_path)
-            if file_size > max_download_size:
-                raise OSError(errno.EFBIG, f"File exceeds maximum download size of {max_download_size} bytes", path)
-            # TOCTOU note: the file could grow between getsize() and read(); accepted
-            # tradeoff since this is a controlled sandbox environment.
+            if file_size > limit:
+                raise self._download_size_error(path, limit)
+            # The metadata preflight avoids opening a known-oversize file. The
+            # limit+1 read closes the historical TOCTOU gap: even if the file
+            # grows after getsize(), this call never buffers more than one byte
+            # beyond the effective limit before rejecting it.
             with open(resolved_path, "rb") as f:
-                return f.read()
+                data = f.read(limit + 1)
+            if len(data) > limit:
+                raise self._download_size_error(path, limit)
+            return data
         except OSError as e:
             # Re-raise with the original path for clearer error messages, hiding internal resolved paths
             raise type(e)(e.errno, e.strerror, path) from None
