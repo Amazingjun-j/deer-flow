@@ -241,7 +241,7 @@ class E2BSandbox(Sandbox):
             logger.error("Failed to read file %s in e2b sandbox: %s", resolved, e)
             return f"Error: {e}"
 
-    def download_file(self, path: str) -> bytes:
+    def _validate_download_path(self, path: str) -> str:
         normalised = path.replace("\\", "/")
         for segment in normalised.split("/"):
             if segment == "..":
@@ -257,28 +257,47 @@ class E2BSandbox(Sandbox):
                 VIRTUAL_PATH_PREFIX,
             )
             raise PermissionError(f"Access denied: path must be under '{VIRTUAL_PATH_PREFIX}': '{path}'")
+        return self._resolve_path(path)
 
-        resolved = self._resolve_path(path)
-        # Prefer the streaming API so the 100 MB cap is enforced *before* the
-        # whole payload is buffered in the gateway process.  ``format="bytes"``
-        # is implemented by the e2b SDK as ``bytearray(r.content)`` — i.e. the
-        # entire file is materialised in memory before returning — which would
-        # let a multi-GB artifact OOM the shared gateway on hosted deployments.
-        # ``format="stream"`` returns a ``FileStreamReader`` (an
-        # ``Iterator[bytes]``) that owns its HTTP response and releases the
-        # pooled connection on exhaustion / close / error.
+    def download_file(self, path: str) -> bytes:
+        """Download with the historical 100 MB provider ceiling.
+
+        Older E2B SDKs lacked the streaming format; this compatibility path keeps
+        their buffered fallback for existing callers. New callers that require a
+        stricter in-flight limit must use :meth:`download_file_bounded`, which
+        fails closed when streaming is unavailable.
+        """
+        return self._download_file_with_limit(path, _MAX_DOWNLOAD_SIZE, allow_buffered_fallback=True)
+
+    def download_file_bounded(self, path: str, *, max_bytes: int) -> bytes:
+        limit = self._effective_download_limit(max_bytes, _MAX_DOWNLOAD_SIZE)
+        return self._download_file_with_limit(path, limit, allow_buffered_fallback=False)
+
+    def _download_file_with_limit(self, path: str, limit: int, *, allow_buffered_fallback: bool) -> bytes:
+        resolved = self._validate_download_path(path)
+
+        # Prefer the streaming API so the cap is enforced before the whole
+        # payload is buffered in the gateway process. ``format="bytes"`` is
+        # implemented by the E2B SDK as ``bytearray(r.content)`` and therefore
+        # cannot satisfy a caller-provided in-flight bound.
         with self._lock:
             client = self._client
             if client is None:
                 raise RuntimeError("sandbox client has been closed")
             try:
                 data = client.files.read(resolved, format="stream")
-            except TypeError:
+            except TypeError as e:
+                if not allow_buffered_fallback:
+                    raise OSError(
+                        errno.ENOTSUP,
+                        "Installed E2B SDK does not support streaming bounded downloads",
+                        path,
+                    ) from e
                 try:
                     data = client.files.read(resolved, format="bytes")
-                except Exception as e:
-                    logger.error("Failed to download file %s from e2b sandbox: %s", resolved, e)
-                    raise OSError(f"Failed to download file '{path}' from sandbox: {e}") from e
+                except Exception as inner:
+                    logger.error("Failed to download file %s from e2b sandbox: %s", resolved, inner)
+                    raise OSError(f"Failed to download file '{path}' from sandbox: {inner}") from inner
             except Exception as e:
                 logger.error("Failed to download file %s from e2b sandbox: %s", resolved, e)
                 raise OSError(f"Failed to download file '{path}' from sandbox: {e}") from e
@@ -286,24 +305,18 @@ class E2BSandbox(Sandbox):
         if data is None:
             return b""
 
-        # Buffered fallbacks (bytes/bytearray/str): apply the cap up front so
-        # we still refuse oversize payloads even on this path.
+        # Buffered responses remain supported only for the historical
+        # ``download_file`` compatibility path. A streaming-capable SDK should
+        # return an iterator for the bounded path; if it instead returns an
+        # already-materialized value, reject oversize content immediately.
         if isinstance(data, (bytes, bytearray)):
-            if len(data) > _MAX_DOWNLOAD_SIZE:
-                raise OSError(
-                    errno.EFBIG,
-                    f"File exceeds maximum download size of {_MAX_DOWNLOAD_SIZE} bytes",
-                    path,
-                )
+            if len(data) > limit:
+                raise self._download_size_error(path, limit)
             return bytes(data)
         if isinstance(data, str):
             encoded = data.encode("utf-8")
-            if len(encoded) > _MAX_DOWNLOAD_SIZE:
-                raise OSError(
-                    errno.EFBIG,
-                    f"File exceeds maximum download size of {_MAX_DOWNLOAD_SIZE} bytes",
-                    path,
-                )
+            if len(encoded) > limit:
+                raise self._download_size_error(path, limit)
             return encoded
 
         chunks: list[bytes] = []
@@ -316,12 +329,8 @@ class E2BSandbox(Sandbox):
                         continue
                     chunk_bytes = chunk if isinstance(chunk, bytes) else bytes(chunk)
                     total += len(chunk_bytes)
-                    if total > _MAX_DOWNLOAD_SIZE:
-                        raise OSError(
-                            errno.EFBIG,
-                            f"File exceeds maximum download size of {_MAX_DOWNLOAD_SIZE} bytes",
-                            path,
-                        )
+                    if total > limit:
+                        raise self._download_size_error(path, limit)
                     chunks.append(chunk_bytes)
             except OSError:
                 raise
