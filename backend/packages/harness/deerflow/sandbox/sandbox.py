@@ -1,3 +1,4 @@
+import errno
 import re
 from abc import ABC, abstractmethod
 
@@ -69,6 +70,28 @@ class Sandbox(ABC):
     @property
     def id(self) -> str:
         return self._id
+
+    @staticmethod
+    def _validate_download_limit(max_bytes: int) -> int:
+        """Validate a caller-supplied hard byte limit for binary downloads."""
+        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int):
+            raise TypeError("max_bytes must be an integer")
+        if max_bytes < 0:
+            raise ValueError("max_bytes must be non-negative")
+        return max_bytes
+
+    @classmethod
+    def _effective_download_limit(cls, max_bytes: int, provider_max_bytes: int) -> int:
+        """Return the stricter of a caller limit and a provider hard ceiling."""
+        return min(cls._validate_download_limit(max_bytes), provider_max_bytes)
+
+    @staticmethod
+    def _download_size_error(path: str, max_bytes: int) -> OSError:
+        return OSError(
+            errno.EFBIG,
+            f"File exceeds maximum download size of {max_bytes} bytes",
+            path,
+        )
 
     @abstractmethod
     def execute_command(
@@ -165,6 +188,33 @@ class Sandbox(ABC):
                 have a single exception type to handle.
         """
         pass
+
+    def download_file_bounded(self, path: str, *, max_bytes: int) -> bytes:
+        """Download binary content without reading beyond ``max_bytes``.
+
+        This is an additive capability so third-party ``Sandbox`` subclasses
+        implementing the historical :meth:`download_file` contract continue to
+        instantiate unchanged. The base implementation deliberately fails
+        closed instead of calling ``download_file`` and checking the result
+        afterward: doing that would bound only the returned value, not transfer
+        or gateway memory. Providers that support a hard in-flight bound must
+        override this method.
+
+        Args:
+            path: The absolute path of the file to download.
+            max_bytes: Maximum number of bytes the provider may read or buffer.
+                Zero permits only an empty file.
+
+        Raises:
+            TypeError: If ``max_bytes`` is not an integer.
+            ValueError: If ``max_bytes`` is negative.
+            NotImplementedError: If the provider has not implemented hard
+                bounded binary reads.
+            OSError: With ``errno.EFBIG`` when the file exceeds the effective
+                bound, or for ordinary provider read failures.
+        """
+        self._validate_download_limit(max_bytes)
+        raise NotImplementedError(f"{type(self).__name__} does not support bounded file downloads")
 
     @abstractmethod
     def list_dir(self, path: str, max_depth=2) -> list[str]:
