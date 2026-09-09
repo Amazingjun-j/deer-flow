@@ -1,0 +1,46 @@
+name: Validate view-image remote sandbox fix
+
+on:
+  push:
+    branches:
+      - validate/view-image-remote-sandbox
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Check out exact candidate
+        run: |
+          git fetch origin fix/view-image-remote-sandbox
+          test "$(git rev-parse origin/fix/view-image-remote-sandbox)" = "a4d409391eee30ee0baea88992201b3adeaeeb59"
+          git checkout --detach a4d409391eee30ee0baea88992201b3adeaeeb59
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.11.1'
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+      - name: Run write-mode formatter
+        working-directory: backend
+        run: make format
+      - name: Verify formatter made no changes
+        run: git diff --exit-code
+      - name: Run backend lint and format checks
+        working-directory: backend
+        run: make lint
+      - name: Run view-image regressions
+        working-directory: backend
+        run: uv run pytest tests/test_view_image_remote_sandbox.py tests/test_view_image_tool.py tests/test_view_image_middleware.py -q
+      - name: Check repository guidance shape
+        run: python scripts/check_agent_guidance.py --base-ref 0b3dadbc9bbdeab8d9e48dd855629ec1642cbb7d --head-ref a4d409391eee30ee0baea88992201b3adeaeeb59 --github-annotations
+      - name: Check final diff whitespace
+        run: git diff --check 0b3dadbc9bbdeab8d9e48dd855629ec1642cbb7d a4d409391eee30ee0baea88992201b3adeaeeb59
