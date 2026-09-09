@@ -190,20 +190,22 @@ class Sandbox(ABC):
         pass
 
     def download_file_bounded(self, path: str, *, max_bytes: int) -> bytes:
-        """Download binary content without reading beyond ``max_bytes``.
+        """Download binary content with a caller-enforced payload bound.
 
         This is an additive capability so third-party ``Sandbox`` subclasses
         implementing the historical :meth:`download_file` contract continue to
         instantiate unchanged. The base implementation deliberately fails
         closed instead of calling ``download_file`` and checking the result
         afterward: doing that would bound only the returned value, not transfer
-        or gateway memory. Providers that support a hard in-flight bound must
-        override this method.
+        or gateway memory. Providers that support a real bounded read must
+        override this method and stop as soon as overflow is known.
 
         Args:
             path: The absolute path of the file to download.
-            max_bytes: Maximum number of bytes the provider may read or buffer.
-                Zero permits only an empty file.
+            max_bytes: Maximum accepted payload size. Zero permits only an empty
+                file. Chunked transports may receive the first chunk that crosses
+                this boundary before overflow can be detected, but must not keep
+                consuming the remainder after the bound is known to be exceeded.
 
         Raises:
             TypeError: If ``max_bytes`` is not an integer.
