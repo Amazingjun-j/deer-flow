@@ -295,7 +295,11 @@ class OpenSandboxSandbox(Sandbox):
         self._file_op(lambda files: files.write_file(resolved, content, mode=644))
 
     def download_file(self, path: str) -> bytes:
+        return self.download_file_bounded(path, max_bytes=_MAX_DOWNLOAD_SIZE)
+
+    def download_file_bounded(self, path: str, *, max_bytes: int) -> bytes:
         resolved = self._resolve_download_path(path)
+        limit = self._effective_download_limit(max_bytes, _MAX_DOWNLOAD_SIZE)
 
         def read_bounded(files) -> bytes:
             chunks: list[bytes] = []
@@ -304,8 +308,8 @@ class OpenSandboxSandbox(Sandbox):
             try:
                 for chunk in stream:
                     total += len(chunk)
-                    if total > _MAX_DOWNLOAD_SIZE:
-                        raise OSError(errno.EFBIG, f"File exceeds maximum download size of {_MAX_DOWNLOAD_SIZE} bytes", path)
+                    if total > limit:
+                        raise self._download_size_error(path, limit)
                     chunks.append(chunk)
             finally:
                 close = getattr(stream, "close", None)
