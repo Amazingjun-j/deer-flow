@@ -319,12 +319,30 @@ class TenkiSandbox(Sandbox):
             self._fs_op(lambda fs: fs.write_stream(resolved, _frames(data)))
 
     def download_file(self, path: str) -> bytes:
+        return self.download_file_bounded(path, max_bytes=_MAX_DOWNLOAD_SIZE)
+
+    def download_file_bounded(self, path: str, *, max_bytes: int) -> bytes:
         normalized = self._guard_traversal(path)
         stripped = normalized.lstrip("/")
         allowed = VIRTUAL_PATH_PREFIX.lstrip("/")
         if stripped != allowed and not stripped.startswith(f"{allowed}/"):
             raise PermissionError(f"Access denied: path must be under '{VIRTUAL_PATH_PREFIX}': '{path}'")
         resolved = self._resolve_path(path)
+        limit = self._effective_download_limit(max_bytes, _MAX_DOWNLOAD_SIZE)
+
+        # Reject known oversize files before opening the payload stream. The
+        # native stream check below remains authoritative if the file grows
+        # after this point.
+        size_r = self._sh(f"wc -c < {shlex.quote(resolved)}")
+        if getattr(size_r, "exit_code", None) not in (0, None):
+            detail = (getattr(size_r, "stderr_text", "") or "").strip() or "not found"
+            raise OSError(f"cannot read '{path}' from sandbox: {detail}")
+        try:
+            size = int((getattr(size_r, "stdout_text", "") or "0").strip() or "0")
+        except ValueError:
+            size = 0
+        if size > limit:
+            raise self._download_size_error(path, limit)
 
         with self._lock:
             if self._closed:
@@ -333,31 +351,26 @@ class TenkiSandbox(Sandbox):
 
         # Deliberate: the lock is dropped before streaming, unlike _fs_op which
         # holds it across its op. _fs_op's serialization guards short, bounded
-        # calls; a download can be up to _MAX_DOWNLOAD_SIZE (100 MB), and holding
+        # calls; a download can be up to the caller/provider limit, and holding
         # the instance lock across it would block every other tool on this
         # sandbox for the whole transfer. The Tenki read stream is safe to run
         # alongside other ops (the SDK multiplexes over its connection), so we
         # accept the interleave here for latency and still evict on a terminal
         # transport error via _note_failure below.
-        #
-        # The cap is enforced on bytes actually received, so a file that grows
-        # mid-transfer still can't exceed it (a stat-then-read check could).
         chunks: list[bytes] = []
         total = 0
         try:
             for chunk in fs.read_stream(resolved):
                 total += len(chunk)
-                if total > _MAX_DOWNLOAD_SIZE:
-                    raise OSError(errno.EFBIG, f"File exceeds maximum download size of {_MAX_DOWNLOAD_SIZE} bytes", path)
+                if total > limit:
+                    raise self._download_size_error(path, limit)
                 chunks.append(chunk)
         except OSError as e:
             # Our own EFBIG size-cap is not a session death — let it pass through
             # without evicting. Every other OSError is a real transport failure:
             # ConnectionError / BrokenPipeError / EOFError are OSError subclasses
             # that _is_terminal_failure treats as terminal, so they must route
-            # through _note_failure like _fs_op/_exec do. Without this, a session
-            # that dies mid-download is never evicted and the agent keeps hitting
-            # OSErrors until some other op happens to reap it.
+            # through _note_failure like _fs_op/_exec do.
             if e.errno == errno.EFBIG:
                 raise
             self._note_failure(e)
