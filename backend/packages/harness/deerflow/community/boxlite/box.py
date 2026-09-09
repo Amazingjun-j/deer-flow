@@ -16,7 +16,6 @@ use only busybox-portable flags so any OCI image works.
 from __future__ import annotations
 
 import base64
-import errno
 import logging
 import posixpath
 import re
