@@ -77,7 +77,7 @@ def _read_verified_host_copy(
     actual_path: str | Path,
     *,
     expected_size: int,
-    expected_sha256: str | None,
+    expected_sha256: str,
 ) -> bytes | None:
     """Read a synchronized host image only when it matches prior metadata."""
 
@@ -93,7 +93,7 @@ def _read_verified_host_copy(
         return None
     if len(data) != size:
         return None
-    if expected_sha256 is not None and hashlib.sha256(data).hexdigest() != expected_sha256:
+    if hashlib.sha256(data).hexdigest() != expected_sha256:
         return None
     return data
 
@@ -173,6 +173,10 @@ def view_image_tool(
         try:
             image_data = sandbox.download_file(image_path)
             read_source_sandbox_id = sandbox_id
+        except IsADirectoryError:
+            return Command(
+                update={"messages": [ToolMessage(f"Error: Path is not a file: {image_path}", tool_call_id=tool_call_id)]},
+            )
         except Exception as e:
             # A replacement sandbox may be live without containing files from
             # the earlier generation. Recover only from an explicitly missing
@@ -182,7 +186,7 @@ def view_image_tool(
             if _is_file_not_found_error(e) and isinstance(previous_view, dict) and previous_source_id != sandbox_id:
                 previous_size = previous_view.get("size")
                 previous_sha256 = previous_view.get("sha256")
-                if isinstance(previous_size, int) and (previous_sha256 is None or isinstance(previous_sha256, str)):
+                if isinstance(previous_size, int) and isinstance(previous_sha256, str):
                     recovered = _read_verified_host_copy(
                         actual_path,
                         expected_size=previous_size,
