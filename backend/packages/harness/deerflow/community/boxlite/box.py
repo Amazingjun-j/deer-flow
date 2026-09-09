@@ -264,13 +264,16 @@ class BoxliteBox(Sandbox):
             first = False
 
     def download_file(self, path: str) -> bytes:
+        return self.download_file_bounded(path, max_bytes=_MAX_DOWNLOAD_SIZE)
+
+    def download_file_bounded(self, path: str, *, max_bytes: int) -> bytes:
         normalized = self._guard_traversal(path)
         stripped = normalized.lstrip("/")
         allowed = VIRTUAL_PATH_PREFIX.lstrip("/")
         if stripped != allowed and not stripped.startswith(f"{allowed}/"):
             raise PermissionError(f"Access denied: path must be under '{VIRTUAL_PATH_PREFIX}': '{path}'")
 
-        # Enforce the size cap before buffering the whole payload.
+        limit = self._effective_download_limit(max_bytes, _MAX_DOWNLOAD_SIZE)
         size_r = self._sh(f"wc -c < {shlex.quote(normalized)}")
         if size_r.exit_code not in (0, None):
             raise OSError(f"cannot read '{path}' from box: {(size_r.stderr or '').strip() or 'not found'}")
@@ -278,16 +281,23 @@ class BoxliteBox(Sandbox):
             size = int((size_r.stdout or "0").strip() or "0")
         except ValueError:
             size = 0
-        if size > _MAX_DOWNLOAD_SIZE:
-            raise OSError(errno.EFBIG, f"File exceeds maximum download size of {_MAX_DOWNLOAD_SIZE} bytes", path)
+        if size > limit:
+            raise self._download_size_error(path, limit)
 
-        r = self._sh(f"base64 {shlex.quote(normalized)}")
+        # The preflight avoids even starting an oversize transfer. Read at most
+        # one byte beyond the limit as a TOCTOU guard in case the file grows
+        # after ``wc`` but before the payload read.
+        read_cap = limit + 1
+        r = self._sh(f"head -c {read_cap} {shlex.quote(normalized)} | base64")
         if r.exit_code not in (0, None):
             raise OSError(f"cannot read '{path}' from box: {(r.stderr or '').strip()}")
         try:
-            return base64.b64decode("".join((r.stdout or "").split()))
+            data = base64.b64decode("".join((r.stdout or "").split()))
         except Exception as e:
             raise OSError(f"failed to decode '{path}' from box: {e}") from e
+        if len(data) > limit:
+            raise self._download_size_error(path, limit)
+        return data
 
     def list_dir(self, path: str, max_depth: int = 2) -> list[str]:
         resolved = self._resolve_path(path)
