@@ -521,13 +521,10 @@ class AioSandbox(Sandbox):
             return f"Error: {e}"
 
     def download_file(self, path: str) -> bytes:
-        """Download file bytes from the sandbox.
+        return self.download_file_bounded(path, max_bytes=_MAX_DOWNLOAD_SIZE)
 
-        Raises:
-            PermissionError: If the path contains '..' traversal segments or is
-                outside ``VIRTUAL_PATH_PREFIX``.
-            OSError: If the file cannot be retrieved from the sandbox.
-        """
+    def download_file_bounded(self, path: str, *, max_bytes: int) -> bytes:
+        """Download file bytes while enforcing a caller-provided in-flight cap."""
         # Reject path traversal before sending to the container API.
         # LocalSandbox gets this implicitly via _resolve_path;
         # here the path is forwarded verbatim so we must check explicitly.
@@ -543,18 +540,15 @@ class AioSandbox(Sandbox):
             logger.error("Refused download outside allowed directory: path=%s, allowed_prefix=%s", path, VIRTUAL_PATH_PREFIX)
             raise PermissionError(f"Access denied: path must be under '{VIRTUAL_PATH_PREFIX}': '{path}'")
 
+        limit = self._effective_download_limit(max_bytes, _MAX_DOWNLOAD_SIZE)
         with self._lock:
             try:
                 chunks: list[bytes] = []
                 total = 0
                 for chunk in self._client.file.download_file(path=path):
                     total += len(chunk)
-                    if total > _MAX_DOWNLOAD_SIZE:
-                        raise OSError(
-                            errno.EFBIG,
-                            f"File exceeds maximum download size of {_MAX_DOWNLOAD_SIZE} bytes",
-                            path,
-                        )
+                    if total > limit:
+                        raise self._download_size_error(path, limit)
                     chunks.append(chunk)
                 return b"".join(chunks)
             except OSError:
