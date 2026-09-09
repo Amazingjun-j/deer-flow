@@ -1,5 +1,4 @@
 import base64
-import errno
 import logging
 import threading
 import uuid
@@ -257,7 +256,6 @@ class AioSandbox(Sandbox):
         scope_id: str | None = None,
     ) -> str:
         """Run no-env commands in one persistent session per subagent run.
-
         Commands within a scope remain serialized, while independent subagents
         use distinct server-side sessions and can execute concurrently. Secret-
         bearing commands keep the existing fresh ``bash.exec`` behavior.
