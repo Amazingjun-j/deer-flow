@@ -2,9 +2,9 @@ import asyncio
 import base64
 import threading
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
+from langchain.tools import ToolRuntime
 
 from deerflow.sandbox.lease import SandboxLeaseManager
 from deerflow.tools.builtins.view_image_tool import view_image_tool
@@ -57,6 +57,21 @@ def _thread_data(tmp_path: Path) -> dict[str, str]:
     }
 
 
+def _runtime(tmp_path: Path, sandbox_id: str) -> ToolRuntime:
+    return ToolRuntime(
+        state={
+            "thread_data": _thread_data(tmp_path),
+            "sandbox": {"sandbox_id": sandbox_id},
+        },
+        context={"thread_id": "thread-1"},
+        config={"configurable": {"thread_id": "thread-1"}},
+        stream_writer=lambda _: None,
+        tools=[],
+        tool_call_id="tc-tool-cancel",
+        store=None,
+    )
+
+
 @pytest.mark.asyncio
 async def test_view_image_ainvoke_drains_download_before_lease_release(tmp_path, monkeypatch):
     sandbox = _BlockingRemoteSandbox()
@@ -72,14 +87,7 @@ async def test_view_image_ainvoke_drains_download_before_lease_release(tmp_path,
         "deerflow.sandbox.sandbox_provider.get_sandbox_provider",
         lambda: provider,
     )
-    runtime = SimpleNamespace(
-        state={
-            "thread_data": _thread_data(tmp_path),
-            "sandbox": {"sandbox_id": sandbox.id},
-        },
-        context={"thread_id": "thread-1"},
-        config={},
-    )
+    runtime = _runtime(tmp_path, sandbox.id)
 
     async def invoke_under_lease():
         try:
