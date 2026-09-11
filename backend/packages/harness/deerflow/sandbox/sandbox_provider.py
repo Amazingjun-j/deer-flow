@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 from deerflow.config import get_app_config
 from deerflow.reflection import resolve_class
-from deerflow.sandbox.lease import run_sync_lifecycle_operation
 from deerflow.sandbox.sandbox import Sandbox
 
 if TYPE_CHECKING:
@@ -63,8 +62,8 @@ class SandboxProvider(ABC):
         user_id: str,
         projection: "SkillProjectionPaths",
     ) -> None:
-        """Async wrapper that keeps lifecycle ownership until sync finishes."""
-        await run_sync_lifecycle_operation(
+        """Async wrapper for upload-based skill synchronization."""
+        await asyncio.to_thread(
             self.sync_agent_skills,
             sandbox_id,
             thread_id=thread_id,
@@ -77,7 +76,7 @@ class SandboxProvider(ABC):
         """Get a sandbox environment by ID.
 
         Args:
-            sandbox_id: The ID of the sandbox environment to retain.
+            sandbox_id: The ID of the acquired sandbox environment.
         """
         pass
 
@@ -163,7 +162,7 @@ def get_sandbox_provider(**kwargs) -> SandboxProvider:
     the cache, or `shutdown_sandbox_provider()` to properly shutdown and clear.
 
     Returns:
-        A sandbox provider instance.
+        The SandboxProvider instance.
     """
     global _default_sandbox_provider
     # Fast path: a single locked read so a concurrent reset/shutdown can't null
