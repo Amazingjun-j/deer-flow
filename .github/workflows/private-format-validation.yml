@@ -1,9 +1,7 @@
 name: Private format validation
 
 on:
-  push:
-    branches:
-      - 2.0.x-dev
+  workflow_dispatch:
 
 permissions:
   contents: read
