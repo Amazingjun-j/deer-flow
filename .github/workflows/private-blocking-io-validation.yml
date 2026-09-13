@@ -1,0 +1,26 @@
+name: Private blocking IO validation
+
+on:
+  push:
+    branches:
+      - validation/read-before-write-final-blocking
+
+permissions:
+  contents: read
+
+jobs:
+  backend-blocking-io:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.1"
+      - run: uv sync --group dev
+      - run: make test-blocking-io
