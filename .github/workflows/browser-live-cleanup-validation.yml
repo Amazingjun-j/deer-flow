@@ -1,0 +1,39 @@
+name: Browser Live Cleanup Validation
+
+on:
+  push:
+    branches: ["browser-live-green-latest-check"]
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.1"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+      - name: Check candidate diff whitespace
+        run: git diff --check ee44d1ebc77d6549cde0a53c28ee999e3163dbd7 HEAD -- backend/app/gateway/routers/browser.py backend/tests/test_browser_readonly_security.py backend/app/gateway/AGENTS.md
+      - name: Format and verify candidate files unchanged
+        working-directory: backend
+        run: |
+          make format
+          git diff --exit-code -- app/gateway/routers/browser.py tests/test_browser_readonly_security.py app/gateway/AGENTS.md
+      - name: Lint backend
+        working-directory: backend
+        run: make lint
+      - name: Run browser live cleanup regression
+        working-directory: backend
+        run: uv run pytest tests/test_browser_readonly_security.py -q
