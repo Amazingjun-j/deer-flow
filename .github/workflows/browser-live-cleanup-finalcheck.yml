@@ -1,0 +1,45 @@
+name: Browser Live Cleanup Final Check
+
+on:
+  push:
+    branches:
+      - browser-live-cleanup-finalcheck-dev
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.1"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+
+      - name: Write-mode format is a no-op
+        working-directory: backend
+        run: |
+          make format
+          git diff --exit-code
+
+      - name: Lint exact tree
+        working-directory: backend
+        run: make lint
+
+      - name: Diff whitespace check
+        run: git diff --check ee44d1ebc77d6549cde0a53c28ee999e3163dbd7 ce9b5fa3e9720c1429ad1aac07e3a1f9d0a03d9a
+
+      - name: Agent guidance check for exact diff
+        run: python scripts/check_agent_guidance.py --base-ref ee44d1ebc77d6549cde0a53c28ee999e3163dbd7 --head-ref ce9b5fa3e9720c1429ad1aac07e3a1f9d0a03d9a --github-annotations
