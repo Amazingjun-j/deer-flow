@@ -1,0 +1,27 @@
+name: Browser Live Cleanup Validation
+
+on:
+  push:
+    branches: ["browser-live-red-check"]
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.1"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+      - name: Run browser live cleanup regression
+        working-directory: backend
+        run: uv run pytest tests/test_browser_readonly_security.py -q
