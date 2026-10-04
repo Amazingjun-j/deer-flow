@@ -185,6 +185,30 @@ async def _send_browser_frame(websocket: WebSocket, data: bytes, *, binary: bool
     await websocket.send_text(json.dumps(payload))
 
 
+async def _drain_browser_stream_cleanup(awaitable) -> asyncio.CancelledError | None:
+    """Finish owned Live cleanup before propagating caller cancellation."""
+    cleanup_task = asyncio.create_task(awaitable)
+    cancellation: asyncio.CancelledError | None = None
+    while not cleanup_task.done():
+        try:
+            await asyncio.shield(cleanup_task)
+        except asyncio.CancelledError as exc:
+            if cancellation is None:
+                cancellation = exc
+        except Exception:
+            break
+    if cleanup_task.cancelled():
+        try:
+            cleanup_task.result()
+        except asyncio.CancelledError as exc:
+            if cancellation is None:
+                cancellation = exc
+    else:
+        with contextlib.suppress(Exception):
+            cleanup_task.result()
+    return cancellation
+
+
 async def _negotiate_browser_frame_format(websocket: WebSocket) -> bool | None:
     """Accept the socket and resolve the optional frame transport capability."""
     requested_format = websocket.query_params.get("frame_format")
@@ -476,6 +500,7 @@ async def browser_stream(websocket: WebSocket, thread_id: ThreadId) -> None:
     input_task: asyncio.Task | None = None
     reader_task: asyncio.Task | None = None
     poll_task: asyncio.Task | None = None
+    cancellation: asyncio.CancelledError | None = None
     try:
         # Seed the live page from the latest browser_view URL. A thread can have
         # a stale browser session from an earlier panel/live attempt; if that
@@ -500,6 +525,8 @@ async def browser_stream(websocket: WebSocket, thread_id: ThreadId) -> None:
         await reader_task
     except WebSocketDisconnect:
         pass
+    except asyncio.CancelledError as exc:
+        cancellation = exc
     except Exception as exc:
         logger.exception("browser stream error: thread_id=%s err=%s", thread_id, exc)
     finally:
@@ -510,7 +537,10 @@ async def browser_stream(websocket: WebSocket, thread_id: ThreadId) -> None:
             reader_task.cancel()
         if poll_task is not None:
             poll_task.cancel()
-        with contextlib.suppress(Exception):
-            await session.stop_screencast(_on_frame)
+        cleanup_cancellation = await _drain_browser_stream_cleanup(session.stop_screencast(_on_frame))
         session_lease.__exit__(None, None, None)
         reset_current_user(token)
+        if cancellation is None:
+            cancellation = cleanup_cancellation
+        if cancellation is not None:
+            raise cancellation
