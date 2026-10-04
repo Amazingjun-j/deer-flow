@@ -782,6 +782,50 @@ def _notification_startup_config(*, channel_connections_enabled: bool = True):
     )
 
 
+def test_lifespan_bounds_slow_scheduled_task_service_shutdown(caplog) -> None:
+    """A slow scheduler stop must not exceed the Gateway shutdown budget."""
+    from app.gateway.app import lifespan
+
+    async def scenario() -> MagicMock:
+        app = FastAPI()
+        startup_config = _notification_startup_config(channel_connections_enabled=False)
+        startup_config.scheduler.enabled = True
+        scheduled_service = MagicMock()
+        scheduled_service.start = AsyncMock()
+
+        async def slow_stop() -> None:
+            await asyncio.sleep(30)
+
+        scheduled_service.stop = AsyncMock(side_effect=slow_stop)
+        channel_service = MagicMock()
+        channel_service.get_status.return_value = {}
+
+        with (
+            patch("app.gateway.app.get_app_config", return_value=startup_config),
+            patch("app.gateway.app.get_gateway_config", return_value=MagicMock(host="x", port=0)),
+            patch("app.gateway.app.langgraph_runtime", _langgraph_with_scheduled_repos),
+            patch("app.gateway.app._SHUTDOWN_HOOK_TIMEOUT_SECONDS", 0.05),
+            patch("app.gateway.app._ensure_admin_user", AsyncMock()),
+            patch("app.gateway.app.auth.close_oidc_service", AsyncMock()),
+            patch("app.channels.service.start_channel_service", AsyncMock(return_value=channel_service)),
+            patch("app.channels.service.stop_channel_service", AsyncMock()),
+            patch("app.scheduler.ScheduledTaskService", return_value=scheduled_service),
+            patch("deerflow.skills.projection.ensure_public_skill_projection"),
+            patch("deerflow.agents.memory.get_memory_manager", return_value=MagicMock()),
+        ):
+            async with lifespan(app):
+                pass
+
+        return scheduled_service
+
+    caplog.set_level(logging.WARNING, logger="app.gateway.app")
+    scheduled_service = asyncio.run(asyncio.wait_for(scenario(), timeout=1.0))
+
+    scheduled_service.start.assert_awaited_once()
+    scheduled_service.stop.assert_awaited_once()
+    assert any("Scheduled task service shutdown exceeded" in record.message for record in caplog.records)
+
+
 async def _run_lifespan_with_notification_worker(*, channel_service_available: bool, visible_only_after_start: bool = False):
     from app.gateway.app import lifespan
 
