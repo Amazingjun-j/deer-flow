@@ -280,6 +280,10 @@ async def test_browser_stream_cancellation_during_disconnect_cleanup_releases_se
     assert not stream_task.done(), "Live cleanup returned before its owned screencast teardown drained"
     assert not lease_released.is_set()
 
+    stream_task.cancel("forced shutdown")
+    await asyncio.sleep(0)
+    assert not stream_task.done(), "Repeated cancellation abandoned Live cleanup"
+
     stop_release.set()
     with pytest.raises(asyncio.CancelledError, match="gateway shutdown"):
         await stream_task
